@@ -1,0 +1,18 @@
+# dsh-cron-board 的宿主组合插入层：向 cordis 组合树插入插件实例。
+# 顶层必须是 YAML 数组（loader patch entries，见 profile 的 cordis.patch.yml 约定）。
+# 【铁律】insert 的 id 必须等于包名（dsh-cron-board）：宿主 client 清单按 id 定位包，
+# id≠包名时 Host 半区照常启动但 client bundle 永不广播（2026-09-19 实证，task-board 同病）。
+# 配置键与 src/config.ts 的 cronBoardSchema 对应；默认值在 schema 中兜底。
+- insert:
+    - id: dsh-cron-board
+      name: dsh-cron-board
+      # config:
+      #   dataDir: ""                    # 数据目录，缺省 $DSH_HOME/cron-board
+      #   schedulerTickMs: 30000         # 调度扫描间隔
+      #   runTimeoutMin: 60              # 单次执行超时（分钟）
+      #   resultsKeepPerTask: 20         # 每任务结果文件保留数
+      #   executionsKeepPerTask: 20      # 每任务执行记录保留数
+      #   defaultPermission: read-only   # 确认门基准权限档
+      #   push:
+      #     httpPort: 3080               # dsh-im HTTP 回退端口
+      #     retryMax: 3                  # 推送重试上限（退避 1s/2s/4s）

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+dist-smoke/
+*.log
+asar-cronboard-probe*.txt
+.DS_Store
