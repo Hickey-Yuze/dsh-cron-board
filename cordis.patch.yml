@@ -1,0 +1,20 @@
+# dsh-cron-board 组合包层：dsh plugin --profile <name> add dsh-cron-board
+# 安装后自动挂载插件行，无需手改 profile 的 cordis.patch.yml。
+# 覆盖配置请在 profile 自己的 cordis.patch.yml 写顶层裸 patch（直接 id:，
+# 不要包 insert:——同 id 再 insert 会报 duplicate loader entry id 启动失败）：
+#   - id: cron-board
+#     name: dsh-cron-board
+#     config: { schedulerTickMs: 30000 }
+- insert:
+    - id: cron-board
+      name: dsh-cron-board
+      # config:                          # 全部字段有默认值，按需覆盖：
+      #   dataDir: ''                    #   数据目录（默认 $DSH_HOME/cron-board）
+      #   schedulerTickMs: 30000         #   调度 tick 间隔（毫秒）
+      #   runTimeoutMin: 60              #   单次执行超时（分钟，超时 cancel 并结算为 timeout）
+      #   resultsKeepPerTask: 20         #   每任务结果文件保留份数
+      #   executionsKeepPerTask: 20      #   每任务执行历史保留条数（账本有界）
+      #   defaultPermission: read-only   #   任务未钉住权限时的默认权限档
+      #   push:                          #   推送适配器
+      #     httpPort: 3080               #   dshIm 服务缺失时的 HTTP 回退端口
+      #     retryMax: 3                  #   推送失败重试上限（退避 1s/2s/4s）
