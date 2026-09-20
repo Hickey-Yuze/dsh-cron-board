@@ -91,11 +91,14 @@ export function DetailModal(props: {
 
   async function save(): Promise<void> {
     if (title.trim() === '' || prompt.trim() === '' || !cronOk) return;
-    // 同名任务提醒（编辑排除自身；归档任务不算）——确认后才允许保存
+    // 同名任务硬拦截（编辑排除自身；归档任务不算）——阻止重复生成
     const dup = (mounted?.tasks ?? []).some(
       (x) => x.id !== task?.id && x.archived !== true && x.title.trim() === title.trim(),
     );
-    if (dup && typeof window !== 'undefined' && !window.confirm(t('dl.duplicateConfirm'))) return;
+    if (dup) {
+      setErr(t('dl.duplicateBlocked'));
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -373,6 +376,19 @@ export function DetailModal(props: {
           }),
           createElement('span', { style: { fontSize: 12 } }, t('f.reuseSession')),
           createElement('span', { className: 'dsh-cb-hint' }, t('f.reuseHint')),
+        ),
+        createElement(
+          'div',
+          { className: 'dsh-cb-checkrow' },
+          createElement('input', {
+            type: 'checkbox',
+            id: 'dsh-cb-enabled',
+            checked: enabled,
+            disabled: archived,
+            onChange: (e: { target: { checked: boolean } }) => setEnabled(e.target.checked),
+          }),
+          createElement('label', { htmlFor: 'dsh-cb-enabled', style: { fontSize: 12 } }, t('f.enableAfterSave')),
+          createElement('span', { className: 'dsh-cb-hint' }, t('f.enableHint')),
         ),
         createElement(
           Field,

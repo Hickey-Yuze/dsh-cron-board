@@ -82,6 +82,8 @@ const zh: Record<string, string> = {
   'f.cronPreview': '无匹配描述，将按表达式原文展示',
   'f.reuseSession': '延续上次会话',
   'f.reuseHint': '开启时在上一会话继续执行；关闭则每次新建独立会话',
+  'f.enableAfterSave': '保存后启用排程',
+  'f.enableHint': '勾选后任务立即进入已排程列；取消则留在草稿',
   'f.tags': '标签（最多 8 个）',
   'f.tagName': '标签名',
   'f.tagPrefix': '执行提示（可选，注入 Prompt 前）',
@@ -124,6 +126,7 @@ const zh: Record<string, string> = {
   'dl.archived': '任务已归档（只读）：恢复后才能编辑或执行',
   'dl.restored': '任务已恢复（默认停用，按需启用）',
   'dl.duplicateConfirm': '已存在同名任务，仍要保存这条重复的吗？',
+  'dl.duplicateBlocked': '已存在同名任务，请先编辑或删除已有任务再保存',
 
   'set.title': '定时任务看板',
   'set.desc': 'cron 定时 agent 会话任务 + 执行终态机器人推送。看板入口在左侧栏。',
@@ -227,6 +230,8 @@ const en: Record<string, string> = {
   'f.cronPreview': 'No human description — shown as raw expression',
   'f.reuseSession': 'Reuse last session',
   'f.reuseHint': 'Continue in the previous session when on; off starts a fresh session each run',
+  'f.enableAfterSave': 'Enable scheduling after save',
+  'f.enableHint': 'Check to move the task to Scheduled immediately; uncheck to keep it in Drafts',
   'f.tags': 'Tags (up to 8)',
   'f.tagName': 'Tag name',
   'f.tagPrefix': 'Prompt hint (optional, prepended to prompt)',
@@ -270,6 +275,7 @@ const en: Record<string, string> = {
   'dl.archived': 'Task is archived (read-only): restore it to edit or run',
   'dl.restored': 'Task restored (disabled by default — enable when needed)',
   'dl.duplicateConfirm': 'A task with the same title already exists — save this duplicate anyway?',
+  'dl.duplicateBlocked': 'A task with the same title already exists — edit or delete the existing one first',
 
   'set.title': 'Cron Task Board',
   'set.desc': 'Scheduled agent-session tasks via cron, with bot push on completion. The board lives in the sidebar.',
