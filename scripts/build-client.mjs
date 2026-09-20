@@ -24,7 +24,7 @@ const result = await build({
   target: 'es2020',
   jsx: 'automatic',
   charset: 'utf8',
-  external: ['react', 'react/jsx-runtime', '@deepseek-ai/*'],
+  external: ['react', 'react/jsx-runtime', 'react-dom', '@deepseek-ai/*'],
   minify: false,
   legalComments: 'none',
   sourcemap: false,
@@ -65,6 +65,9 @@ if (/^\s*import[\s{"' ]/m.test(out)) {
 }
 if (!out.includes('require("react")')) {
   throw new Error('build-client: 产物缺少 react 的 require 调用（external 失效，react 被打入或缺失？）');
+}
+if (out.includes('node_modules/react-dom') || /var react_dom = /.test(out)) {
+  throw new Error('build-client: react-dom 被打入 bundle（必须 external，宿主 ModuleLoader 注入）');
 }
 for (const wire of ['sidebar.panellist', 'cron-board/state', '"main"']) {
   if (!out.includes(wire)) {
