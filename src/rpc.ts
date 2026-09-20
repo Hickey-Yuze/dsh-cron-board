@@ -301,6 +301,15 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         } catch (err) {
           deps.log.warn(`[cron-board] meta.workspaces 失败: ${errDetail(err)}`);
 
+        }
+        try {
+          const presets = ctx.get('agentPresets') as unknown as { list?(): { id?: string; title?: string }[] } | undefined;
+          view.presets = ((await presets?.list?.()) ?? [])
+            .filter((p) => typeof p?.id === 'string')
+            .map((p) => ({ id: p.id as string, title: typeof p.title === 'string' ? p.title : (p.id as string) }));
+        } catch (err) {
+          deps.log.warn(`[cron-board] meta.presets 失败: ${errDetail(err)}`);
+        }
         try {
           // 会话列表（供「指定延续会话」下拉）：sessions 服务鸭子探测，取 id/标题/更新时间/工作目录
           const sessions = ctx.get('sessions') as unknown as
@@ -312,18 +321,10 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               id: x.id as string,
               title: typeof x.title === 'string' && x.title !== '' ? x.title : (x.id as string).slice(0, 8),
               updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : undefined,
-              cwd: typeof x.cwd === 'string' ? x.cwd : undefined,
+              cwd: [x.cwd, (x.meta as { cwd?: unknown } | undefined)?.cwd].find((v) => typeof v === 'string') as string | undefined,
             }));
-        } catch {
-          view.sessions = [];
-        }        }
-        try {
-          const presets = ctx.get('agentPresets') as unknown as { list?(): { id?: string; title?: string }[] } | undefined;
-          view.presets = ((await presets?.list?.()) ?? [])
-            .filter((p) => typeof p?.id === 'string')
-            .map((p) => ({ id: p.id as string, title: typeof p.title === 'string' ? p.title : (p.id as string) }));
         } catch (err) {
-          deps.log.warn(`[cron-board] meta.presets 失败: ${errDetail(err)}`);
+          deps.log.warn(`[cron-board] meta.sessions 失败: ${errDetail(err)}`);
         }
         try {
           view.bots = await deps.pusher.listBots();
