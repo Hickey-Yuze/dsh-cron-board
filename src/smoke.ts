@@ -181,12 +181,15 @@ async function main(): Promise<void> {
   section = 7;
   const unavailable = new Pusher(() => undefined, { httpPort: 59999, retryMax: 2 }, logger);
   eq(unavailable.channelView().mode, 'unavailable', '无服务无 HTTP → unavailable');
-  const brief = unavailable.briefFor({ ok: true, title: '周报', status: 'success', durationMs: 65000, resultPath: 'C:\\r\\1.md' });
-  ok(brief.includes('✅') && brief.includes('周报') && brief.includes('1 分 5 秒') && brief.includes('C:\\r\\1.md'), '成功简讯模板');
+  const brief = unavailable.briefFor({ ok: true, title: '周报', status: 'success', durationMs: 65000, resultPath: 'C:\\r\\1.md', content: '本周完成 X。' });
+  ok(brief.includes('✅') && brief.includes('周报') && brief.includes('1 分 5 秒') && brief.includes('本周完成 X。'), '成功简讯模板');
+  ok(!brief.includes('C:\\r\\1.md') && !brief.includes('已存档') && !brief.includes('dsh-cron-board'), '简讯不落本地路径、不署名');
+  const briefNoBody = unavailable.briefFor({ ok: true, title: '周报', status: 'success', durationMs: 65000, resultPath: 'C:\\r\\1.md' });
+  ok(briefNoBody.includes('C:\\r\\1.md'), '无正文时兜底给结果路径');
   const briefFail = unavailable.briefFor({ ok: false, title: '同步', status: 'failed', reason: 'error', durationMs: 1000 });
-  ok(briefFail.includes('❌') && briefFail.includes('error'), '失败简讯模板');
+  ok(briefFail.includes('❌') && briefFail.includes('error') && !briefFail.includes('dsh-cron-board'), '失败简讯模板（含原因、无署名）');
   const enBrief = unavailable.briefFor({ ok: true, title: 'weekly', status: 'success', durationMs: 65000, lang: 'en' });
-  ok(enBrief.includes('Duration: 1m 5s'), '英文简讯');
+  ok(enBrief.includes('Duration: 1m 5s') && !enBrief.includes('— dsh-cron-board'), '英文简讯');
   // 服务直调成功
   const sent: Array<[string, string]> = [];
   const svc: DshImLike = {
