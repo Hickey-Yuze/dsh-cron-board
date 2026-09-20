@@ -201,7 +201,7 @@ const CSS = `
 .dsh-cb-notebox { font-size: 12px; color: var(--dsh-cb-text); background: var(--dsh-cb-card-2); border: 1px solid var(--dsh-cb-border); border-left: 3px solid var(--dsh-cb-warn); border-radius: var(--dsh-cb-radius-sm); padding: 10px 12px; }
 .dsh-cb-gatebox { border: 1px solid var(--dsh-cb-warn); border-radius: var(--dsh-cb-radius-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--dsh-cb-warn-bg); }
 .dsh-cb-gatebox.dsh-cb-gate-ok { border-color: var(--dsh-cb-ok); background: var(--dsh-cb-ok-bg); }
-.dsh-cb-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dsh-cb-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
 .dsh-cb-row-right { margin-left: auto; }
 
 .dsh-cb-exec { border: 1px solid var(--dsh-cb-border); border-radius: var(--dsh-cb-radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; background: var(--dsh-cb-card-2); }

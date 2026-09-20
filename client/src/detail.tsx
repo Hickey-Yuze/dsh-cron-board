@@ -61,6 +61,7 @@ export function DetailModal(props: {
   const [permission, setPermission] = useState(task?.pinned.permission ?? '');
   const [pushKey, setPushKey] = useState(pushKeyOf(task?.push));
   const [reuseSession, setReuseSession] = useState(task?.reuseSession !== false);
+  const [pinnedSession, setPinnedSession] = useState(task?.pinned.sessionId ?? '');
   const [tags, setTags] = useState<TaskTag[]>(task?.tags ?? []);
   const [tagDraft, setTagDraft] = useState<{ name: string; promptPrefix: string }>({ name: '', promptPrefix: '' });
   const [aiText, setAiText] = useState('');
@@ -114,6 +115,7 @@ export function DetailModal(props: {
             presetId: presetId === '' ? undefined : presetId,
             permission:
               permission === '' ? undefined : (permission as 'read-only' | 'workspace-write' | 'danger-full-access'),
+            sessionId: pinnedSession === '' ? undefined : pinnedSession,
           },
           push: parsePushKey(pushKey),
           reuseSession,
@@ -383,6 +385,29 @@ export function DetailModal(props: {
           createElement('span', { style: { fontSize: 12 } }, t('f.reuseSession')),
           createElement('span', { className: 'dsh-cb-hint' }, t('f.reuseHint')),
         ),
+        reuseSession
+          ? createElement(
+              'div',
+              { className: 'dsh-cb-field', style: { maxWidth: 420 } },
+              createElement('span', { className: 'dsh-cb-label' }, t('f.pickSession')),
+              createElement(Select, {
+                value: pinnedSession,
+                onChange: setPinnedSession,
+                options: [
+                  { value: '', label: t('f.pickSessionAuto') },
+                  ...(props.meta?.sessions ?? [])
+                    .filter((x) => {
+                      const wsPath = meta?.workspaces.find((w) => w.id === workspaceId)?.path;
+                      return wsPath ? x.cwd === wsPath : true;
+                    })
+                    .map((x) => ({
+                      value: x.id,
+                      label: `${x.title} · ${x.id.slice(0, 8)}`,
+                    })),
+                ],
+              }),
+            )
+          : null,
         createElement(
           'div',
           { className: 'dsh-cb-checkrow' },

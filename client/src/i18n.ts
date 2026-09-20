@@ -67,6 +67,8 @@ const zh: Record<string, string> = {
 
   'act.run': '立即执行',
   'act.runShort': '执行',
+  'f.pickSession': '延续指定会话（可选）',
+  'f.pickSessionAuto': '自动（上次执行的会话）',
   'act.pushShort': '推送',
   'act.save': '保存',
   'act.cancel': '取消',
@@ -229,6 +231,8 @@ const en: Record<string, string> = {
 
   'act.run': 'Run now',
   'act.runShort': 'Run',
+  'f.pickSession': 'Pin a session to continue (optional)',
+  'f.pickSessionAuto': 'Auto (last executed session)',
   'act.pushShort': 'Push',
   'act.save': 'Save',
   'act.cancel': 'Cancel',
