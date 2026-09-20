@@ -14,6 +14,15 @@ export interface TaskPinned {
   workspaceId?: string;
   presetId?: string;
   permission?: PermissionPreset;
+  /** 指定延续的会话 id（2026-09-20 用户要求）；缺省延续上次执行的会话。 */
+  sessionId?: string;
+}
+
+export interface MetaSession {
+  id: string;
+  title: string;
+  updatedAt?: string;
+  cwd?: string;
 }
 
 export type ExecutionStatus = 'running' | 'success' | 'failed' | 'timeout' | 'canceled';
@@ -135,6 +144,7 @@ export interface MetaView {
   presets: MetaPreset[];
   bots: MetaBot[];
   targets: MetaTarget[];
+  sessions?: MetaSession[];
   pushAvailable: boolean;
   pushMode: 'service' | 'http' | 'unavailable';
 }
