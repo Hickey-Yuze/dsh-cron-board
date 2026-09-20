@@ -142,11 +142,11 @@ const CSS = `
 .dsh-cb-task-title { font-size: 13px; font-weight: 600; color: var(--dsh-cb-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsh-cb-task-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .dsh-cb-task-time { color: var(--dsh-cb-dim); }
-.dsh-cb-task-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.dsh-cb-task-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .dsh-cb-task-status { color: var(--dsh-cb-dim); }
-.dsh-cb-row-action { border: none; background: transparent; color: var(--dsh-cb-dim); font-size: 12px; line-height: 1; padding: 3px 5px; border-radius: 6px; cursor: pointer; opacity: .55; transition: opacity .15s, background .15s, color .15s; }
-.dsh-cb-row-action:hover { opacity: 1; background: var(--dsh-cb-card-2); color: var(--dsh-cb-accent); }
-.dsh-cb-row-action-danger:hover { color: #d64545; background: rgba(214,69,69,.12); }
+.dsh-cb-row-action { border: 1px solid var(--dsh-cb-border); background: var(--dsh-cb-card-2); color: var(--dsh-cb-text); font-size: 14px; line-height: 1; padding: 6px 12px; border-radius: 8px; cursor: pointer; opacity: .85; transition: opacity .15s, background .15s, color .15s, border-color .15s; }
+.dsh-cb-row-action:hover { opacity: 1; background: var(--dsh-cb-card); border-color: var(--dsh-cb-accent); color: var(--dsh-cb-accent); }
+.dsh-cb-row-action-danger:hover { color: #d64545; border-color: #d64545; background: rgba(214,69,69,.12); }
 
 /* ── 日志项 ── */
 .dsh-cb-log-item {
