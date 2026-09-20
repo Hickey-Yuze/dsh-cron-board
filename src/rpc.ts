@@ -137,7 +137,7 @@ export function normalizeDraft(raw: unknown): TaskDraft {
   if (prompt.trim() === '') fail('bad-request', 'Prompt 不能为空');
   const cron = asString(r.cron, 'cron', 64).trim();
   if (!isValidCron(cron)) fail('invalid-cron', `cron 表达式不合法: ${cron}`);
-  const enabled = r.enabled === true;
+  const enabled = Boolean(r.enabled); // 容错：字符串/undefined 都转布尔
   const reuseSession = r.reuseSession === undefined ? undefined : r.reuseSession === true;
   const tags = normalizeTags(r.tags);
   let pinned: TaskDraft['pinned'] = {};
