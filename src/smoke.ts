@@ -225,6 +225,11 @@ async function main(): Promise<void> {
     push: { botId: 'bot_1', targetId: 'daily-report' },
   });
   eq(good.title, '周报', '标题去空格');
+  eq(good.id, undefined, '缺省 id = undefined');
+  const withId = normalizeDraft({ id: 'task-123', title: 'x', prompt: 'p', cron: '* * * * *', enabled: false });
+  eq(withId.id, 'task-123', 'id 透传');
+  const withEmptyId = normalizeDraft({ id: '', title: 'x', prompt: 'p', cron: '* * * * *', enabled: false });
+  eq(withEmptyId.id, undefined, '空 id = undefined');
   assert.throws(() => normalizeDraft({ title: '', prompt: 'x', cron: '* * * * *', enabled: false }), /标题/, '空标题拒绝');
   assert.throws(() => normalizeDraft({ title: 'x', prompt: 'x', cron: 'bad cron', enabled: false }), /cron/, '坏 cron 拒绝');
   assert.throws(() => normalizeDraft({ title: 'x', prompt: 'x'.repeat(40000), cron: '* * * * *', enabled: false }), /超长/, '超长 prompt 拒绝');

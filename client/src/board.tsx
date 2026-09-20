@@ -135,7 +135,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [showArchived, setShowArchived] = useState(false);
   const [detailId, setDetailId] = useState<string | null | undefined>(undefined);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<string | null>(null); // 统计卡片筛选
+  const [statusFilter, setStatusFilter] = useState<string | null>(null); // 统计卡片筛选：todo/running/completed/logs
 
   const load = useCallback(async () => {
     const r = await props.rpc('cron-board/state');
@@ -165,7 +165,15 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const archivedTasks = tasks.filter((task) => task.archived);
 
   // 统计
-  const todoCount = activeTasks.filter((t) => !t.enabled).length;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const todoCount = activeTasks.filter((t) => {
+    if (!t.enabled || !t.nextRunAt) return false;
+    const next = new Date(t.nextRunAt).getTime();
+    return next >= today.getTime() && next < tomorrow.getTime();
+  }).length;
   const runningCount = activeTasks.filter((t) => t.running).length;
   const completedCount = activeTasks.filter((t) => {
     const last = t.executions[0];
@@ -190,12 +198,19 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   // 筛选后的任务
   const filteredTasks = useMemo(() => {
     if (!statusFilter) return activeTasks;
-    if (statusFilter === 'todo') return activeTasks.filter((t) => !t.enabled);
+    if (statusFilter === 'todo') {
+      return activeTasks.filter((t) => {
+        if (!t.enabled || !t.nextRunAt) return false;
+        const next = new Date(t.nextRunAt).getTime();
+        return next >= today.getTime() && next < tomorrow.getTime();
+      });
+    }
     if (statusFilter === 'running') return activeTasks.filter((t) => t.running);
     if (statusFilter === 'completed') return activeTasks.filter((t) => {
       const last = t.executions[0];
       return last && last.status === 'success';
     });
+    if (statusFilter === 'logs') return []; // 日志模式不显示任务列表
     return activeTasks;
   }, [activeTasks, statusFilter]);
 
@@ -283,7 +298,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         count: recentLogs.length,
         unit: t('stat.recentLogs'),
         tone: 'default',
-        onClick: () => setStatusFilter(null),
+        onClick: () => setStatusFilter(statusFilter === 'logs' ? null : 'logs'),
       }),
     ),
 
@@ -305,6 +320,32 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
           { className: 'dsh-cb-modal-body' },
           createElement('div', { className: 'dsh-cb-errbox' }, `${t('board.loadFail')}: ${err}`),
           createElement(Btn, { onClick: () => void load() }, t('board.retry')),
+        )
+      : null,
+
+    // 日志视图
+    statusFilter === 'logs'
+      ? createElement(
+          'div',
+          { className: 'dsh-cb-projects' },
+          recentLogs.length === 0
+            ? createElement('div', { className: 'dsh-cb-empty' }, t('board.feedEmpty'))
+            : recentLogs.map(({ task, exec }) =>
+                createElement(
+                  'div',
+                  { key: exec.id, className: 'dsh-cb-log-item' },
+                  createElement('div', { className: 'dsh-cb-log-head' },
+                    createElement('span', { className: 'dsh-cb-log-task' }, task.title),
+                    createElement(Badge, { tone: exec.status === 'success' ? 'ok' : exec.status === 'failed' ? 'err' : 'warn' },
+                      t(`st.${exec.status}`)),
+                  ),
+                  createElement('div', { className: 'dsh-cb-log-meta' },
+                    createElement('span', null, t(`exec.trigger.${exec.trigger}`)),
+                    createElement('span', null, fmtAgo(exec.endedAt ?? exec.startedAt)),
+                    exec.durationMs !== undefined ? createElement('span', null, fmtDur(exec.durationMs)) : null,
+                  ),
+                ),
+              ),
         )
       : null,
 

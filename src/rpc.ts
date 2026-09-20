@@ -131,6 +131,7 @@ export function normalizeTags(raw: unknown): TaskTag[] | undefined {
 /** 载荷校验 + 归一（导出供冒烟测试直接断言）。 */
 export function normalizeDraft(raw: unknown): TaskDraft {
   const r = asRecord(raw);
+  const id = r.id === undefined || r.id === null || r.id === '' ? undefined : asId(r.id, 'id');
   const title = asString(r.title, 'title', 120).trim();
   if (title === '') fail('bad-request', '标题不能为空');
   const prompt = asString(r.prompt, 'prompt', 32768);
@@ -151,7 +152,7 @@ export function normalizeDraft(raw: unknown): TaskDraft {
     };
   }
   const push = r.push === undefined ? undefined : asPushTarget(r.push);
-  return { title, prompt, cron, enabled, pinned, push, reuseSession, tags };
+  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags };
 }
 
 /** 组装快照（存储行 + 派生标志），所有变更端点统一返回。 */
