@@ -144,9 +144,10 @@ const CSS = `
 .dsh-cb-task-time { color: var(--dsh-cb-dim); }
 .dsh-cb-task-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .dsh-cb-task-status { color: var(--dsh-cb-dim); }
-.dsh-cb-row-action { border: 1px solid var(--dsh-cb-border); background: var(--dsh-cb-card-2); color: var(--dsh-cb-text); font-size: 14px; line-height: 1; padding: 6px 12px; border-radius: 8px; cursor: pointer; opacity: .85; transition: opacity .15s, background .15s, color .15s, border-color .15s; }
-.dsh-cb-row-action:hover { opacity: 1; background: var(--dsh-cb-card); border-color: var(--dsh-cb-accent); color: var(--dsh-cb-accent); }
-.dsh-cb-row-action-danger:hover { color: #d64545; border-color: #d64545; background: rgba(214,69,69,.12); }
+.dsh-cb-row-action { border: none; background: var(--dsh-cb-card-2); color: var(--dsh-cb-text); font-size: 12px; font-weight: 500; line-height: 1; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s; }
+.dsh-cb-row-action:hover { background: var(--dsh-cb-accent); color: #fff; }
+.dsh-cb-row-action-danger { color: #d64545; background: rgba(214,69,69,.08); }
+.dsh-cb-row-action-danger:hover { background: #d64545; color: #fff; }
 
 /* ── 日志项 ── */
 .dsh-cb-log-item {

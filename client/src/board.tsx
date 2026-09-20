@@ -69,16 +69,15 @@ function StatCard(props: {
   );
 }
 
-/** 任务行内联操作小按钮（stopPropagation 防触发整行打开详情）。 */
-function rowAction(icon: string, title: string, onClick: () => void, danger = false): ReactElement {
+/** 任务行内联操作文字胶囊（stopPropagation 防触发整行打开详情）。 */
+function rowAction(label: string, onClick: () => void, danger = false): ReactElement {
   return createElement('button', {
     className: `dsh-cb-row-action${danger ? ' dsh-cb-row-action-danger' : ''}`,
-    title,
     onClick: (e: { stopPropagation: () => void }) => {
       e.stopPropagation();
       onClick();
     },
-  }, icon);
+  }, label);
 }
 
 /** 项目分组卡片 */
@@ -132,9 +131,9 @@ function ProjectGroup(props: {
                       last ? fmtAgo(last.endedAt ?? last.startedAt) : '-',
                     ),
                     createElement('span', { className: 'dsh-cb-task-actions' },
-                      rowAction('▶', t('act.run'), () => onRun(task)),
-                      rowAction('✉', t('act.testPush'), () => onTestPush(task)),
-                      rowAction('🗑', t('act.delete'), () => onDelete(task), true),
+                      rowAction(t('act.runShort'), () => onRun(task)),
+                      rowAction(t('act.pushShort'), () => onTestPush(task)),
+                      rowAction(t('act.delete'), () => onDelete(task), true),
                     ),
                     createElement('span', { className: 'dsh-cb-task-status' },
                       last ? t(`st.${last.status}`) : t('st.pending'),

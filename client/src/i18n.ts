@@ -66,6 +66,8 @@ const zh: Record<string, string> = {
   'perm.danger-full-access': '完全访问',
 
   'act.run': '立即执行',
+  'act.runShort': '执行',
+  'act.pushShort': '推送',
   'act.save': '保存',
   'act.cancel': '取消',
   'act.delete': '删除',
@@ -226,6 +228,8 @@ const en: Record<string, string> = {
   'perm.danger-full-access': 'Full access',
 
   'act.run': 'Run now',
+  'act.runShort': 'Run',
+  'act.pushShort': 'Push',
   'act.save': 'Save',
   'act.cancel': 'Cancel',
   'act.delete': 'Delete',
