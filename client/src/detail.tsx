@@ -611,15 +611,15 @@ export function DetailModal(props: {
       ),
     ),
   );
-  // v1.1.3 回退 Portal：排查「控件无法交互」问题。如确认是 transform 祖先导致定位错位，再加回 Portal
-  // const portal = getPortal()?.createPortal;
-  // if (portal && typeof document !== 'undefined') {
-  //   try {
-  //     return portal(modalTree, document.body) as ReactElement;
-  //   } catch {
-  //     /* 降级原地渲染 */
-  //   }
-  // }
+  // v1.3.3 恢复 Portal：v1.3.0 重构后 root 容器有 overflow/transform，inline 渲染导致 fixed 定位错位、点击命中偏移
+  const portal = getPortal()?.createPortal;
+  if (portal && typeof document !== 'undefined') {
+    try {
+      return portal(modalTree, document.body) as ReactElement;
+    } catch {
+      /* 降级原地渲染 */
+    }
+  }
   return modalTree;
 }
 
