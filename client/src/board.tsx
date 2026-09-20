@@ -165,15 +165,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const archivedTasks = tasks.filter((task) => task.archived);
 
   // 统计
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const todoCount = activeTasks.filter((t) => {
-    if (!t.enabled || !t.nextRunAt) return false;
-    const next = new Date(t.nextRunAt).getTime();
-    return next >= today.getTime() && next < tomorrow.getTime();
-  }).length;
+  const todoCount = activeTasks.filter((t) => t.enabled && !t.running).length;
   const runningCount = activeTasks.filter((t) => t.running).length;
   const completedCount = activeTasks.filter((t) => {
     const last = t.executions[0];
@@ -198,13 +190,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   // 筛选后的任务
   const filteredTasks = useMemo(() => {
     if (!statusFilter) return activeTasks;
-    if (statusFilter === 'todo') {
-      return activeTasks.filter((t) => {
-        if (!t.enabled || !t.nextRunAt) return false;
-        const next = new Date(t.nextRunAt).getTime();
-        return next >= today.getTime() && next < tomorrow.getTime();
-      });
-    }
+    if (statusFilter === 'todo') return activeTasks.filter((t) => t.enabled && !t.running);
     if (statusFilter === 'running') return activeTasks.filter((t) => t.running);
     if (statusFilter === 'completed') return activeTasks.filter((t) => {
       const last = t.executions[0];

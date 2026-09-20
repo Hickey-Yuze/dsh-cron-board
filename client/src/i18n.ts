@@ -26,7 +26,7 @@ const zh: Record<string, string> = {
   'board.other': '其他',
   'board.noTask': '暂无任务，点击「+」添加',
 
-  'stat.todo': '今日待办',
+  'stat.todo': '待执行',
   'stat.running': '进行中',
   'stat.completed': '已完成',
   'stat.logs': '日志',
@@ -185,7 +185,7 @@ const en: Record<string, string> = {
   'board.other': 'Other',
   'board.noTask': 'No tasks yet, click "+" to add',
 
-  'stat.todo': 'To Do',
+  'stat.todo': 'Pending',
   'stat.running': 'In Progress',
   'stat.completed': 'Completed',
   'stat.logs': 'Logs',
