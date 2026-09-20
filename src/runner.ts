@@ -14,7 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-session';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import type * as dshLlm from '@deepseek-ai/dsh-llm';
 import { readFile } from 'node:fs/promises';
 import type { CronBoardConfig } from './config.js';
 import type { Execution, PermissionPreset, TaskRow } from './contract.js';
@@ -23,6 +23,16 @@ import { LedgerStore } from './ledger.js';
 import type { DshImLike, Pusher } from './pusher.js';
 import type { ResultStore } from './results.js';
 import { errDetail, newExecId, newSessionId } from './util.js';
+
+let dshLlmModule: typeof dshLlm | undefined;
+/**
+ * 惰性 require dsh-llm（ESM 包）：宿主启动期经 cordis loader 并发动态 import() 同一模块，
+ * 顶层同步 require 会触发 ERR_REQUIRE_ESM_RACE_CONDITION（require(esm) 竞态）。
+ * 延后到运行期（此时模块图已加载完毕，require 命中同一缓存实例）即可规避。
+ */
+function requireDshLlm(): typeof dshLlm {
+  return (dshLlmModule ??= require('@deepseek-ai/dsh-llm') as typeof dshLlm);
+}
 
 /* ── 宿主服务鸭子类型（可选依赖全部 ctx.get + 结构类型，不做硬类型耦合） ── */
 
@@ -310,7 +320,7 @@ export class TaskRunner {
         }
       });
       try {
-        agent.followup(createUserMessage({ content: [{ type: 'text', text: task.prompt }], source: { kind: 'user' } }));
+        agent.followup(requireDshLlm().createUserMessage({ content: [{ type: 'text', text: task.prompt }], source: { kind: 'user' } }));
       } catch (err) {
         off();
         throw new Error(`任务 Prompt 发送失败: ${errDetail(err)}`);

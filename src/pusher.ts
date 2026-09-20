@@ -137,7 +137,7 @@ export class Pusher {
     return { state: 'failed', attempts: maxAttempts, channel, lastError };
   }
 
-  /** 终态简讯（zh/en）：状态头 + agent 回复正文（截断）+ 结果路径/失败原因 + 署名。 */
+  /** 终态简讯（zh/en）：状态头 + agent 回复正文（截断）+ 失败原因。不落本地路径、不署名（用户要求）。 */
   briefFor(input: {
     ok: boolean;
     title: string;
@@ -158,8 +158,6 @@ export class Pusher {
       if (body !== '') lines.push(body);
       else if (input.resultPath !== undefined) lines.push(`Result archived: ${input.resultPath}`);
       if (!input.ok && input.reason !== undefined) lines.push(`Reason: ${input.reason}`);
-      if (body !== '' && input.resultPath !== undefined) lines.push(`— Full text: ${input.resultPath}`);
-      lines.push('— dsh-cron-board');
       return lines.join('\n');
     }
     const lines = [
@@ -171,12 +169,10 @@ export class Pusher {
     lines.push('');
     if (body !== '') {
       lines.push(body);
-      if (input.resultPath !== undefined) lines.push(`……全文已存档：${input.resultPath}`);
     } else if (input.resultPath !== undefined) {
       lines.push(`结果已存档：${input.resultPath}`);
     }
     if (!input.ok && input.reason !== undefined) lines.push(`失败原因：${input.reason}`);
-    lines.push('—— dsh-cron-board');
     return lines.join('\n');
   }
 }
