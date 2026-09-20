@@ -313,7 +313,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         try {
           // 会话列表（供「指定延续会话」下拉）：sessions 服务鸭子探测，取 id/标题/更新时间/工作目录
           const sessions = ctx.get('sessions') as unknown as
-            | { list?(): { id?: string; title?: string; updatedAt?: string; cwd?: string }[] }
+            | { list?(): { id?: string; title?: string; updatedAt?: string; cwd?: string; meta?: { cwd?: unknown } }[] }
             | undefined;
           view.sessions = (sessions?.list?.() ?? [])
             .filter((x) => typeof x?.id === 'string')
