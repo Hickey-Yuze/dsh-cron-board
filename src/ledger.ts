@@ -44,6 +44,20 @@ function normalize(raw: unknown): LedgerDoc {
     t.lastSkipReason = t.lastSkipReason ?? null;
     t.lastPushTest = t.lastPushTest ?? null;
     t.push = t.push ?? null;
+    // 标签防脏：非法条目逐条修复（丢弃非对象/空名/重复名），不丢整行任务（原版 issue #1521 语义）
+    if (!Array.isArray(t.tags)) {
+      t.tags = [];
+    } else {
+      const seen = new Set<string>();
+      t.tags = t.tags.filter((tag) => {
+        if (!tag || typeof tag !== 'object' || typeof tag.name !== 'string') return false;
+        const name = tag.name.trim();
+        if (name === '' || seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
+      if (t.tags.length > 8) t.tags.length = 8;
+    }
   }
   return doc;
 }

@@ -52,6 +52,7 @@ export class Scheduler {
       const rolls: Array<{ id: string; nextRunAt: string | null; skipReason: string | null }> = [];
       const fire: TaskRow[] = [];
       for (const task of this.ledger.snapshot.tasks) {
+        if (task.archived) continue; // 归档任务不参与调度（恢复时重算 nextRunAt）
         if (!task.enabled) continue;
         if (!isValidCron(task.cron)) {
           rolls.push({ id: task.id, nextRunAt: null, skipReason: 'invalid-cron' });

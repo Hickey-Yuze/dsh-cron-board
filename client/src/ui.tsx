@@ -47,11 +47,12 @@ export function Field(props: { label: string; children?: ReactNode; hint?: strin
   );
 }
 
-export function TextInput(props: { value: string; onChange: (v: string) => void; placeholder?: string }): ReactElement {
+export function TextInput(props: { value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean }): ReactElement {
   return createElement('input', {
     className: 'dsh-cb-input',
     value: props.value,
     placeholder: props.placeholder,
+    disabled: props.disabled === true,
     onChange: (e: { target: { value: string } }) => props.onChange(e.target.value),
   });
 }
@@ -61,12 +62,14 @@ export function TextArea(props: {
   onChange: (v: string) => void;
   placeholder?: string;
   rows?: number;
+  disabled?: boolean;
 }): ReactElement {
   return createElement('textarea', {
     className: 'dsh-cb-textarea',
     value: props.value,
     placeholder: props.placeholder,
     rows: props.rows ?? 6,
+    disabled: props.disabled === true,
     onChange: (e: { target: { value: string } }) => props.onChange(e.target.value),
   });
 }

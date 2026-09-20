@@ -15,6 +15,7 @@ import type {
   SettingsView,
   TaskDraft,
   TaskRow,
+  TaskTag,
   TaskView,
 } from './contract.js';
 import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
@@ -56,6 +57,8 @@ export interface RpcDeps {
   config: CronBoardConfig;
   log: { info(m: string): void; warn(m: string): void; error(m: string): void };
   buildSnapshot(): BoardSnapshot;
+  /** AI 解析（index.ts 注入，依赖 llm/agentDefaultModel；rpc 层不直接耦合 llm）。 */
+  parsePrompt(text: string, signal: AbortSignal): Promise<{ title?: string; prompt?: string; cron?: string }>;
 }
 
 function fail(code: string, message: string): never {
@@ -96,6 +99,35 @@ function asId(v: unknown, field: string): string {
   return s;
 }
 
+/** 标签校验：接受 {name,promptPrefix?} 对象或裸字符串；trim 非空、去重、封顶 8、名称≤40、提示≤500（非法项丢弃）。 */
+export function normalizeTags(raw: unknown): TaskTag[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) fail('bad-request', 'tags 必须为数组');
+  const out: TaskTag[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (out.length >= 8) break;
+    let name: unknown;
+    let prefix: unknown;
+    if (typeof item === 'string') {
+      name = item;
+    } else if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const r = item as Record<string, unknown>;
+      name = r.name;
+      prefix = r.promptPrefix;
+    } else {
+      continue;
+    }
+    if (typeof name !== 'string') continue;
+    const trimmed = name.trim();
+    if (trimmed === '' || trimmed.length > 40 || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    const normalizedPrefix = typeof prefix === 'string' ? prefix.trim().slice(0, 500) : undefined;
+    out.push(normalizedPrefix !== undefined && normalizedPrefix !== '' ? { name: trimmed, promptPrefix: normalizedPrefix } : { name: trimmed });
+  }
+  return out;
+}
+
 /** 载荷校验 + 归一（导出供冒烟测试直接断言）。 */
 export function normalizeDraft(raw: unknown): TaskDraft {
   const r = asRecord(raw);
@@ -106,6 +138,8 @@ export function normalizeDraft(raw: unknown): TaskDraft {
   const cron = asString(r.cron, 'cron', 64).trim();
   if (!isValidCron(cron)) fail('invalid-cron', `cron 表达式不合法: ${cron}`);
   const enabled = r.enabled === true;
+  const reuseSession = r.reuseSession === undefined ? undefined : r.reuseSession === true;
+  const tags = normalizeTags(r.tags);
   let pinned: TaskDraft['pinned'] = {};
   if (r.pinned !== undefined && r.pinned !== null) {
     const p = asRecord(r.pinned);
@@ -117,7 +151,7 @@ export function normalizeDraft(raw: unknown): TaskDraft {
     };
   }
   const push = r.push === undefined ? undefined : asPushTarget(r.push);
-  return { title, prompt, cron, enabled, pinned, push };
+  return { title, prompt, cron, enabled, pinned, push, reuseSession, tags };
 }
 
 /** 组装快照（存储行 + 派生标志），所有变更端点统一返回。 */
@@ -311,6 +345,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             existing.enabled = draft.enabled;
             existing.pinned = draft.pinned ?? {};
             existing.push = draft.push === undefined ? existing.push : draft.push;
+            if (draft.reuseSession !== undefined) existing.reuseSession = draft.reuseSession;
+            if (draft.tags !== undefined) existing.tags = draft.tags;
             // 确认门重武装：指纹变化即失效
             if (existing.confirm && existing.confirm.fingerprint !== confirmFingerprint(existing)) {
               existing.confirm = null;
@@ -331,6 +367,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               nextRunAt: nextAt,
               lastSkipReason: null,
               lastPushTest: null,
+              reuseSession: draft.reuseSession ?? true,
+              tags: draft.tags ?? [],
               createdAt: now,
               updatedAt: now,
               executions: [],
@@ -361,6 +399,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         await deps.ledger.mutate((doc) => {
           const t = doc.tasks.find((x) => x.id === id);
           if (!t) fail('not-found', `任务不存在: ${id}`);
+          if (t.archived) fail('archived', '任务已归档，恢复后再启用');
           t.enabled = enabled;
           t.nextRunAt = enabled ? (cronNextRun(t.cron, new Date())?.toISOString() ?? null) : null;
           t.lastSkipReason = null;
@@ -369,11 +408,55 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return deps.buildSnapshot();
       }
 
+      case 'cron-board/task-archive': {
+        const r = asRecord(payload);
+        const id = asId(r.id, 'id');
+        if (deps.runner.isRunning(id)) fail('task-running', '任务执行中，结束后再归档');
+        await deps.ledger.mutate((doc) => {
+          const t = doc.tasks.find((x) => x.id === id);
+          if (!t) fail('not-found', `任务不存在: ${id}`);
+          t.archived = true;
+          t.enabled = false;
+          t.nextRunAt = null;
+          t.lastSkipReason = null;
+          t.updatedAt = new Date().toISOString();
+        });
+        return deps.buildSnapshot();
+      }
+
+      case 'cron-board/task-restore': {
+        const r = asRecord(payload);
+        const id = asId(r.id, 'id');
+        await deps.ledger.mutate((doc) => {
+          const t = doc.tasks.find((x) => x.id === id);
+          if (!t) fail('not-found', `任务不存在: ${id}`);
+          t.archived = false;
+          t.enabled = false;
+          t.nextRunAt = null;
+          t.updatedAt = new Date().toISOString();
+        });
+        return deps.buildSnapshot();
+      }
+
+      case 'cron-board/parse-prompt': {
+        const r = asRecord(payload);
+        const text = asString(r.text, 'text', 8000).trim();
+        if (text === '') fail('bad-request', '解析文本不能为空');
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 45_000);
+        try {
+          return await deps.parsePrompt(text, abort.signal);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
       case 'cron-board/task-run': {
         const r = asRecord(payload);
         const id = asId(r.id, 'id');
         const task = deps.ledger.snapshot.tasks.find((t) => t.id === id);
         if (!task) fail('not-found', `任务不存在: ${id}`);
+        if (task.archived) fail('archived', '任务已归档，恢复后再执行');
         if (deps.runner.isRunning(id)) fail('task-running', '任务正在运行');
         if (gateDecision(task, deps.config.defaultPermission) === 'awaiting-confirmation') {
           fail('awaiting-confirmation', '任务权限待确认：请在看板中完成一次性确认后再执行');

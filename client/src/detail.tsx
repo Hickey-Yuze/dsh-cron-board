@@ -4,12 +4,13 @@
  */
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { BoardSnapshot, MetaView, TaskView } from '../../src/contract.js';
+import type { BoardSnapshot, MetaView, TaskTag, TaskView } from '../../src/contract.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
 import { lang, t } from './i18n.js';
 import type { RpcFn } from './rpc.js';
 import { Badge, Btn, Dot, ErrorBox, Field, Select, TextArea, TextInput } from './ui.js';
+import { TagBadge } from './board.js';
 
 function pushOptions(meta: MetaView | null): { value: string; label: string }[] {
   const options = [{ value: '', label: t('f.pushNone') }];
@@ -26,6 +27,7 @@ export function DetailModal(props: {
   rpc: RpcFn;
   snapshot: BoardSnapshot | null;
   meta: MetaView | null;
+  sessions?: { open?(sessionId: string): unknown };
   taskId: string | null;
   onClose: () => void;
   onChanged: () => void;
@@ -42,10 +44,16 @@ export function DetailModal(props: {
   const [presetId, setPresetId] = useState(task?.pinned.presetId ?? '');
   const [permission, setPermission] = useState(task?.pinned.permission ?? '');
   const [pushKey, setPushKey] = useState(pushKeyOf(task?.push));
+  const [reuseSession, setReuseSession] = useState(task?.reuseSession !== false);
+  const [tags, setTags] = useState<TaskTag[]>(task?.tags ?? []);
+  const [tagDraft, setTagDraft] = useState<{ name: string; promptPrefix: string }>({ name: '', promptPrefix: '' });
+  const [aiText, setAiText] = useState('');
+  const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [resultText, setResultText] = useState<{ execId: string; markdown: string } | null>(null);
+  const archived = task?.archived === true;
 
   // Esc 关闭（编辑中 busy 时忽略，防误触丢内容）；遮罩点击不关闭
   const onCloseRef = useRef(props.onClose);
@@ -84,6 +92,8 @@ export function DetailModal(props: {
               permission === '' ? undefined : (permission as 'read-only' | 'workspace-write' | 'danger-full-access'),
           },
           push: parsePushKey(pushKey),
+          reuseSession,
+          tags: tags.length > 0 ? tags : undefined,
         },
       });
       if (r.ok) {
@@ -130,6 +140,37 @@ export function DetailModal(props: {
     }
   }
 
+  /** AI 解析：粘贴文本 → 表单填充（不自动保存，解析失败不动已输入内容）。 */
+  async function runAiParse(): Promise<void> {
+    const text = aiText.trim();
+    if (text === '' || aiParsing) return;
+    setAiParsing(true);
+    setErr(null);
+    try {
+      const r = await props.rpc('cron-board/parse-prompt', { text });
+      if (r.ok) {
+        if (typeof r.value.title === 'string' && r.value.title !== '') setTitle(r.value.title);
+        if (typeof r.value.prompt === 'string' && r.value.prompt !== '') setPrompt(r.value.prompt);
+        if (typeof r.value.cron === 'string' && r.value.cron !== '' && isValidCron(r.value.cron)) {
+          setCronFields(splitCronFields(r.value.cron));
+        }
+        setNote(t('f.aiHint'));
+      } else {
+        setErr(r.error.message);
+      }
+    } finally {
+      setAiParsing(false);
+    }
+  }
+
+  function addTag(): void {
+    const name = tagDraft.name.trim();
+    if (name === '' || tags.some((x) => x.name === name) || tags.length >= 8) return;
+    const prefix = tagDraft.promptPrefix.trim();
+    setTags((prev) => [...prev, prefix !== '' ? { name, promptPrefix: prefix } : { name }]);
+    setTagDraft({ name: '', promptPrefix: '' });
+  }
+
   return createElement(
     'div',
     {
@@ -160,6 +201,7 @@ export function DetailModal(props: {
       createElement(
         'div',
         { className: 'dsh-cb-modal-body' },
+        archived ? createElement('div', { className: 'dsh-cb-notebox' }, t('dl.archived')) : null,
         task
           ? createElement(
               'div',
@@ -192,8 +234,22 @@ export function DetailModal(props: {
                 : null,
             )
           : null,
-        createElement(Field, { label: t('f.title') }, createElement(TextInput, { value: title, onChange: setTitle, placeholder: t('f.titlePh') })),
-        createElement(Field, { label: t('f.prompt') }, createElement(TextArea, { value: prompt, onChange: setPrompt, placeholder: t('f.promptPh') })),
+        !task && !archived
+          ? createElement(
+              'div',
+              { className: 'dsh-cb-field' },
+              createElement('span', { className: 'dsh-cb-label' }, t('f.aiParse')),
+              createElement(TextArea, { value: aiText, onChange: setAiText, placeholder: t('f.aiPlaceholder'), rows: 3 }),
+              createElement(
+                'div',
+                { className: 'dsh-cb-row' },
+                createElement(Btn, { disabled: aiParsing || aiText.trim() === '', onClick: () => void runAiParse() }, aiParsing ? t('f.aiParsing') : t('f.aiParse')),
+                createElement('span', { className: 'dsh-cb-hint' }, t('f.aiHint')),
+              ),
+            )
+          : null,
+        createElement(Field, { label: t('f.title') }, createElement(TextInput, { value: title, onChange: setTitle, placeholder: t('f.titlePh'), disabled: archived })),
+        createElement(Field, { label: t('f.prompt') }, createElement(TextArea, { value: prompt, onChange: setPrompt, placeholder: t('f.promptPh'), disabled: archived })),
         createElement(
           Field,
           { label: t('f.cronFields'), hint: cronPreview },
@@ -209,6 +265,7 @@ export function DetailModal(props: {
                   className: 'dsh-cb-input',
                   value: cronFields[i] ?? '',
                   placeholder: '*',
+                  disabled: archived,
                   onChange: (e: { target: { value: string } }) =>
                     setCronFields((prev) => prev.map((v, j) => (j === i ? e.target.value : v))),
                 }),
@@ -284,6 +341,64 @@ export function DetailModal(props: {
             ),
           ),
         ),
+        createElement(
+          'div',
+          { className: 'dsh-cb-checkrow' },
+          createElement('input', {
+            type: 'checkbox',
+            id: 'dsh-cb-reuse',
+            checked: reuseSession,
+            disabled: archived,
+            onChange: (e: { target: { checked: boolean } }) => setReuseSession(e.target.checked),
+          }),
+          createElement('label', { htmlFor: 'dsh-cb-reuse', style: { fontSize: 12 } }, t('f.reuseSession')),
+          createElement('span', { className: 'dsh-cb-hint' }, t('f.reuseHint')),
+        ),
+        createElement(
+          Field,
+          { label: t('f.tags') },
+          createElement(
+            'div',
+            { className: 'dsh-cb-tagrow' },
+            tags.length > 0
+              ? createElement(
+                  'div',
+                  { className: 'dsh-cb-filterrow' },
+                  tags.map((tag) =>
+                    createElement(
+                      'span',
+                      { className: 'dsh-cb-tagitem', key: tag.name },
+                      createElement(TagBadge, { tag }),
+                      archived
+                        ? null
+                        : createElement(
+                            Btn,
+                            { kind: 'ghost', onClick: () => setTags((prev) => prev.filter((x) => x.name !== tag.name)) },
+                            t('f.tagRemove'),
+                          ),
+                    ),
+                  ),
+                )
+              : null,
+            !archived && tags.length < 8
+              ? createElement(
+                  'div',
+                  { className: 'dsh-cb-tagitem' },
+                  createElement(TextInput, {
+                    value: tagDraft.name,
+                    onChange: (v) => setTagDraft((prev) => ({ ...prev, name: v })),
+                    placeholder: t('f.tagName'),
+                  }),
+                  createElement(TextInput, {
+                    value: tagDraft.promptPrefix,
+                    onChange: (v) => setTagDraft((prev) => ({ ...prev, promptPrefix: v })),
+                    placeholder: t('f.tagPrefix'),
+                  }),
+                  createElement(Btn, { disabled: tagDraft.name.trim() === '', onClick: addTag }, t('f.tagAdd')),
+                )
+              : null,
+          ),
+        ),
         task && task.executions.length > 0 && task.needsConfirm && task.confirmed
           ? createElement('div', { className: 'dsh-cb-notebox' }, t('dl.ranOnce'))
           : null,
@@ -300,8 +415,20 @@ export function DetailModal(props: {
         createElement(
           'div',
           { className: 'dsh-cb-row' },
-          createElement(Btn, { kind: 'primary', disabled: busy || !cronOk, onClick: () => void save() }, t('act.save')),
-          task
+          archived
+            ? createElement(
+                Btn,
+                {
+                  disabled: busy,
+                  onClick: () =>
+                    void action(() => props.rpc('cron-board/task-restore', { id: task!.id }), t('dl.restored')).then(
+                      () => props.onClose(),
+                    ),
+                },
+                t('act.restore'),
+              )
+            : createElement(Btn, { kind: 'primary', disabled: busy || !cronOk, onClick: () => void save() }, t('act.save')),
+          task && !archived
             ? createElement(
                 Btn,
                 {
@@ -311,7 +438,7 @@ export function DetailModal(props: {
                 t('act.run'),
               )
             : null,
-          task
+          task && !archived
             ? createElement(
                 Btn,
                 {
@@ -321,11 +448,11 @@ export function DetailModal(props: {
                 t('act.testPush'),
               )
             : null,
-          task
+          task && !archived
             ? createElement(
                 Btn,
                 {
-                  disabled: enabled === task.enabled,
+                  disabled: busy || enabled === task.enabled,
                   onClick: () =>
                     void action(
                       () => props.rpc('cron-board/task-toggle', { id: task.id, enabled }),
@@ -333,6 +460,19 @@ export function DetailModal(props: {
                     ),
                 },
                 enabled ? t('act.enable') : t('act.disable'),
+              )
+            : null,
+          task && !archived
+            ? createElement(
+                Btn,
+                {
+                  disabled: busy || task.running,
+                  onClick: () =>
+                    void action(() => props.rpc('cron-board/task-archive', { id: task.id }), t('act.archive')).then(() =>
+                      props.onClose(),
+                    ),
+                },
+                t('act.archive'),
               )
             : null,
           createElement('div', { className: 'dsh-cb-row-right' }),
@@ -376,8 +516,7 @@ export function DetailModal(props: {
                                 : exec.status === 'failed'
                                   ? 'err'
                                   : 'warn',
-                        }),
-                        createElement('strong', { style: { fontSize: 12 } }, t(`st.${exec.status}`)),
+                        }),                        createElement('strong', { style: { fontSize: 12 } }, t(`st.${exec.status}`)),
                         createElement(Badge, {}, t(`exec.trigger.${exec.trigger}`)),
                         exec.push
                           ? createElement(
@@ -407,6 +546,17 @@ export function DetailModal(props: {
                           : null,
                         exec.resultPath !== undefined && exec.status !== 'running'
                           ? createElement(Btn, { kind: 'ghost', disabled: busy, onClick: () => void viewResult(exec.id) }, t('act.viewResult'))
+                          : null,
+                        exec.sessionId !== '' && props.sessions?.open && exec.status !== 'running'
+                          ? createElement(
+                              Btn,
+                              {
+                                kind: 'ghost',
+                                title: exec.sessionId,
+                                onClick: () => props.sessions?.open?.(exec.sessionId),
+                              },
+                              t('board.openSession'),
+                            )
                           : null,
                       ),
                       createElement(

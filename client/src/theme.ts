@@ -112,6 +112,26 @@ const CSS = `
 .dsh-cb-crongrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .dsh-cb-croncell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 
+/* ── 任务标签：色调徽章（hue 由名称哈希，内联注入）与筛选 chips ── */
+.dsh-cb-tagbadge { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 16px; white-space: nowrap; }
+.dsh-cb-filterrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dsh-cb-chip { border: 1px solid var(--dsh-cb-border); background: transparent; color: var(--dsh-cb-dim); border-radius: 999px; padding: 2px 10px; font-size: 11px; cursor: pointer; }
+.dsh-cb-chip-on { background: var(--dsh-cb-card-2); color: var(--dsh-cb-text); border-color: var(--dsh-cb-text); }
+.dsh-cb-select-sm { max-width: 180px; }
+
+/* ── 标签编辑器 ── */
+.dsh-cb-tagrow { display: flex; flex-direction: column; gap: 6px; }
+.dsh-cb-tagitem { display: flex; align-items: center; gap: 6px; }
+.dsh-cb-tagitem .dsh-cb-input { flex: 1; min-width: 0; }
+
+/* ── 复用开关行 ── */
+.dsh-cb-checkrow { display: flex; align-items: center; gap: 8px; }
+.dsh-cb-checkrow input[type="checkbox"] { accent-color: var(--dsh-cb-text); margin: 0; }
+
+/* ── 归档视图 ── */
+.dsh-cb-archbar { display: flex; align-items: center; gap: 8px; }
+.dsh-cb-archcard { opacity: 0.75; }
+
 /* ── 设置页 ── */
 .dsh-cb-set { display: flex; flex-direction: column; gap: 14px; max-width: 640px; color: var(--dsh-cb-text); font-size: 13px; }
 .dsh-cb-set h3 { font-size: 14px; margin: 0; }

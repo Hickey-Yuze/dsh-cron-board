@@ -11,9 +11,11 @@ import { cronNextRun, describeCron, isValidCron, parseCron } from './cron.js';
 import type { Execution, TaskRow } from './contract.js';
 import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import { LedgerStore, type BoardTask } from './ledger.js';
+import { extractJsonObject } from './parse.js';
 import { Pusher, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
-import { normalizeDraft } from './rpc.js';
+import { normalizeDraft, normalizeTags } from './rpc.js';
+import { buildPromptWithTags, TaskRunner } from './runner.js';
 import { newTaskId } from './util.js';
 
 let section = 0;
@@ -232,6 +234,19 @@ async function main(): Promise<void> {
     '非法 targetId 拒绝',
   );
   eq(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false }).pinned?.permission, undefined, '缺省权限 = 跟随默认');
+  const withTags = normalizeDraft({
+    title: 'x',
+    prompt: 'p',
+    cron: '* * * * *',
+    enabled: false,
+    reuseSession: false,
+    tags: [' ', 'a', 'a', { name: 'b', promptPrefix: ' 先看文档 ' }, { nope: 1 }, 42, 'c', 'd', 'e', 'f', 'g', 'h'],
+  });
+  eq(withTags.reuseSession, false, 'reuseSession 布尔归一');
+  eq((withTags.tags ?? []).map((x) => x.name).join(','), 'a,b,c,d,e,f,g,h', '标签去重/去空/封顶 8/非法丢弃');
+  eq((withTags.tags ?? []).find((x) => x.name === 'b')?.promptPrefix, '先看文档', '执行提示 trim');
+  eq(normalizeTags(undefined), undefined, '缺省 tags = undefined');
+  assert.throws(() => normalizeTags('nope'), /数组/, 'tags 非数组拒绝');
 
   // ── 9. dist/client.js 产物协议断言 ──
   section = 9;
@@ -249,9 +264,74 @@ async function main(): Promise<void> {
     ok(artifact.includes('__flat'), 'exports 展平尾');
     ok(artifact.includes('sidebar.panellist'), '看板入口挂载');
     ok(artifact.includes('cron-board/state'), 'RPC 端点接线');
+    ok(artifact.includes('cron-board/task-archive'), '归档端点接线');
+    ok(artifact.includes('cron-board/parse-prompt'), 'AI 解析端点接线');
+    ok(artifact.includes('dsh-cb-tagbadge'), '标签徽章样式接线');
+    ok(artifact.includes('reuseSession'), '会话复用开关接线');
     ok(artifact.includes('dsh-cron-board'), 'slot id 同步');
   } else {
     console.log('#9 跳过（dist/client.js 未构建——先 pnpm run build 再跑完整 smoke）');
+  }
+
+  // ── 10. v1.1.0：标签注入 / 归档拒绝 / 重启对账 / AI 容错 ──
+  section = 10;
+  // 标签 Prompt 注入（带提示标签前置，无提示标签与无标签不改 Prompt）
+  const tagged = makeTask({
+    prompt: '做一件事',
+    tags: [
+      { name: '报告', promptPrefix: ' 输出使用组级口径 ' },
+      { name: '仅分类' },
+    ],
+  });
+  const withPrefix = buildPromptWithTags(tagged);
+  ok(withPrefix.startsWith('【标签提示 · 报告】输出使用组级口径'), '执行提示注入到 Prompt 前');
+  ok(withPrefix.endsWith('做一件事'), '原文完整保留在注入段之后');
+  const plain = makeTask({ prompt: '做一件事', tags: [{ name: '仅分类' }] });
+  eq(buildPromptWithTags(plain), '做一件事', '无提示标签不改 Prompt');
+  eq(buildPromptWithTags(makeTask({ prompt: '做一件事' })), '做一件事', '无标签不改 Prompt');
+  // AI 解析 JSON 容错
+  ok(extractJsonObject('{"title":"A","prompt":"B"}') !== undefined, '裸 JSON 解析');
+  ok(extractJsonObject('```json\n{"title":"A","prompt":"B"}\n```') !== undefined, '围栏 JSON 解析');
+  ok(extractJsonObject('好的：{"title":"A","prompt":"B"} 完毕') !== undefined, '杂文包裹 JSON 解析');
+  eq(extractJsonObject('完全没有对象'), undefined, '无对象返回 undefined');
+  // 归档任务拒绝执行（launch 前置 + runner 桩账本）
+  {
+    const dir10 = await tempDir();
+    const ledger10 = new LedgerStore(dir10, 20, logger);
+    await ledger10.init();
+    const runner10 = new TaskRunner(
+      {
+        get: () => undefined,
+        on: () => () => {},
+        effect: () => () => {},
+      } as never,
+      ledger10,
+      new ResultStore(dir10),
+      pusherFail,
+      { runTimeoutMin: 60, executionsKeepPerTask: 20, resultsKeepPerTask: 20, defaultPermission: 'read-only' } as never,
+      logger,
+    );
+    const archTask = makeTask({ archived: true });
+    await ledger10.mutate((doc) => doc.tasks.push(archTask));
+    await assert.rejects(() => runner10.launch(archTask, 'manual'), /archived/, '归档任务拒绝执行');
+    // 重启对账：running 且会话不在册 → canceled，绝不重发
+    const orphan: Execution = {
+      id: 'exec_orphan',
+      trigger: 'cron',
+      sessionId: 'sess_gone',
+      status: 'running',
+      startedAt: now2(),
+    };
+    const stuck = makeTask({ id: 'task_stuck', executions: [orphan] });
+    await ledger10.mutate((doc) => doc.tasks.push(stuck));
+    await runner10.reconcileStartup();
+    const after = (await ledger10.mutate((doc) => doc.tasks.find((x) => x.id === 'task_stuck')!.executions[0].status))
+      .value;
+    eq(after, 'canceled', '重启对账：无会话在册 → canceled');
+    await ledger10.mutate((doc) => {
+      const e = doc.tasks.find((x) => x.id === 'task_stuck')!.executions[0];
+      eq(e.exitReason, 'interrupted-by-restart', '对账取消原因');
+    });
   }
 
   console.log(`smoke: all sections passed (${logs.length} log lines)`);
