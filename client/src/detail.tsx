@@ -108,7 +108,7 @@ export function DetailModal(props: {
           title: title.trim(),
           prompt,
           cron: cron.trim(),
-          enabled,
+          enabled: Boolean(enabled), // 强制布尔，防止序列化异常
           pinned: {
             workspaceId: workspaceId === '' ? undefined : workspaceId,
             presetId: presetId === '' ? undefined : presetId,
