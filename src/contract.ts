@@ -16,7 +16,7 @@ export interface TaskPinned {
   permission?: PermissionPreset;
 }
 
-export type ExecutionStatus = 'running' | 'success' | 'failed' | 'timeout';
+export type ExecutionStatus = 'running' | 'success' | 'failed' | 'timeout' | 'canceled';
 
 export interface PushRecord {
   state: 'sent' | 'failed' | 'skipped' | 'disabled';
@@ -44,6 +44,12 @@ export interface ConfirmState {
   confirmedAt: string;
 }
 
+/** 任务标签：名称必填；执行提示非空时在每次执行前注入到任务 Prompt 之前。 */
+export interface TaskTag {
+  name: string;
+  promptPrefix?: string;
+}
+
 export interface PushTestRecord {
   ok: boolean;
   error?: string;
@@ -65,6 +71,12 @@ export interface TaskRow {
   lastPushTest: PushTestRecord | null;
   /** 延续会话：上次执行成功进入的会话 id；下次执行 resume 该会话而非新建（2026-09-19 用户要求）。 */
   activeSessionId?: string;
+  /** 会话复用开关（默认 true）：关闭后每次执行都新建会话。 */
+  reuseSession?: boolean;
+  /** 归档：只读保留，不参与调度与手动执行，可恢复。 */
+  archived?: boolean;
+  /** 任务标签（≤8）：分类徽章 + 筛选 + 执行提示注入。 */
+  tags?: TaskTag[];
   createdAt: string;
   updatedAt: string;
   executions: Execution[];
@@ -146,6 +158,8 @@ export interface TaskDraft {
   enabled: boolean;
   pinned?: TaskPinned;
   push?: PushTargetRef | null;
+  reuseSession?: boolean;
+  tags?: TaskTag[];
 }
 
 export type CronBoardEndpoint =
@@ -158,6 +172,9 @@ export type CronBoardEndpoint =
   | 'cron-board/task-run'
   | 'cron-board/task-toggle'
   | 'cron-board/task-confirm'
+  | 'cron-board/task-archive'
+  | 'cron-board/task-restore'
+  | 'cron-board/parse-prompt'
   | 'cron-board/push-test'
   | 'cron-board/push-retry'
   | 'cron-board/exec-result';
@@ -172,6 +189,9 @@ export interface CronBoardRequestMap {
   'cron-board/task-run': { id: string };
   'cron-board/task-toggle': { id: string; enabled: boolean };
   'cron-board/task-confirm': { id: string };
+  'cron-board/task-archive': { id: string };
+  'cron-board/task-restore': { id: string };
+  'cron-board/parse-prompt': { text: string };
   'cron-board/push-test': { id: string };
   'cron-board/push-retry': { taskId: string; execId: string };
   'cron-board/exec-result': { taskId: string; execId: string };
@@ -187,6 +207,9 @@ export interface CronBoardResponseMap {
   'cron-board/task-run': BoardSnapshot;
   'cron-board/task-toggle': BoardSnapshot;
   'cron-board/task-confirm': BoardSnapshot;
+  'cron-board/task-archive': BoardSnapshot;
+  'cron-board/task-restore': BoardSnapshot;
+  'cron-board/parse-prompt': { title?: string; prompt?: string; cron?: string };
   'cron-board/push-test': BoardSnapshot;
   'cron-board/push-retry': BoardSnapshot;
   'cron-board/exec-result': { markdown: string };

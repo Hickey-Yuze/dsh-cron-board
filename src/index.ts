@@ -17,6 +17,7 @@ import type {} from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-session';
 import { Config, resolveDataDir, type CronBoardConfig } from './config.js';
 import { LedgerStore } from './ledger.js';
+import { createAiParser } from './parse.js';
 import { Pusher, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { buildSnapshot, registerRpc, type RpcDeps } from './rpc.js';
@@ -82,6 +83,7 @@ export async function apply(ctx: Context, config: CronBoardConfig): Promise<void
     config,
     log,
     buildSnapshot: () => buildSnapshot(deps),
+    parsePrompt: createAiParser(ctx, log).parse,
   };
 
   // 注册期抛错会杀插件 fiber：RPC 挂载内部自兜底，这里再套一层
@@ -89,6 +91,13 @@ export async function apply(ctx: Context, config: CronBoardConfig): Promise<void
     registerRpc(ctx, deps);
   } catch (err) {
     log.error(`[cron-board] RPC 注册失败: ${errDetail(err)}`);
+  }
+
+  // 重启对账（确定性恢复）：在途执行转观察或取消，绝不重发
+  try {
+    await runner.reconcileStartup();
+  } catch (err) {
+    log.error(`[cron-board] 重启对账失败（非致命）: ${errDetail(err)}`);
   }
 
   ctx.effect(() => {

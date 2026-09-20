@@ -22,10 +22,13 @@ import { PANEL_ID, PanelIcon } from './panel-icon.js';
 import { makeRpc } from './rpc.js';
 import { SettingsPanel } from './settings.js';
 
-export const inject = ['slots', 'layout', 'locale'];
+export const inject = ['slots', 'layout', 'locale', 'sessions'];
 
 export function apply(ctx: CronBoardClientCtx): void {
   const rpc = makeRpc();
+  const sessions = (ctx as unknown as { get?(k: string): unknown }).get?.('sessions') as
+    | { open?(sessionId: string): unknown }
+    | undefined;
   initI18n(ctx);
   ensureThemeStyle();
 
@@ -49,7 +52,7 @@ export function apply(ctx: CronBoardClientCtx): void {
       {
         name: 'main',
         key: PANEL_ID,
-        inject: () => ({ rpc }),
+        inject: () => ({ rpc, sessions }),
       },
       BoardPanel,
     );

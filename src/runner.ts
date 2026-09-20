@@ -86,6 +86,11 @@ interface SessionTitleLike {
   rename(session: { id: string }, title: string): unknown;
 }
 
+/** 会话在册检查（in-memory store）：重启对账与复用前的存活判断。 */
+interface SessionsLike {
+  get?(id: string): { id?: string } | undefined;
+}
+
 interface WorkspaceRegistryLike {
   get(id: string): { path?: string } | undefined;
   list?(): { id?: string; title?: string; path?: string }[];
@@ -96,6 +101,17 @@ interface WorkspaceRegistryLike {
 interface SessionEventLike {
   type: string;
   data?: unknown;
+}
+
+/**
+ * 组装实际下发的执行 Prompt：带执行提示的标签以「标签提示」段注入到任务 Prompt 之前
+ * （原版 task-board issue #1521 语义：无提示标签只作展示，不改变 Prompt）。
+ */
+export function buildPromptWithTags(task: Pick<TaskRow, 'prompt' | 'tags'>): string {
+  const prefixes = (task.tags ?? [])
+    .filter((tag) => typeof tag.promptPrefix === 'string' && tag.promptPrefix.trim() !== '')
+    .map((tag) => `【标签提示 · ${tag.name}】${tag.promptPrefix!.trim()}`);
+  return prefixes.length > 0 ? `${prefixes.join('\n')}\n\n${task.prompt}` : task.prompt;
 }
 
 export interface RunnerLogger {
@@ -126,6 +142,93 @@ export class TaskRunner {
     return this.ctx.get('dshIm') as unknown as DshImLike | undefined;
   }
 
+  private sessions(): SessionsLike | undefined {
+    return this.ctx.get('sessions') as unknown as SessionsLike | undefined;
+  }
+
+  /**
+   * 重启对账（原版 task-board「确定性恢复」语义）：
+   * - 账本中 running 且会话仍在 in-memory 名册 → 转入观察模式继续结算；
+   * - 会话不在册 / 无 sessionId → 取消（interrupted-by-restart），绝不重发。
+   */
+  async reconcileStartup(): Promise<void> {
+    const running: Array<{ task: TaskRow; exec: Execution }> = [];
+    for (const task of this.ledger.snapshot.tasks) {
+      for (const exec of task.executions) {
+        if (exec.status === 'running') running.push({ task, exec });
+      }
+    }
+    if (running.length === 0) return;
+    this.log.info(`[cron-board] 重启对账：发现 ${running.length} 条在途执行`);
+    for (const { task, exec } of running) {
+      const inRoster = exec.sessionId !== '' && this.sessions()?.get?.(exec.sessionId) !== undefined;
+      if (!inRoster) {
+        await this.finalize(task, exec, {
+          status: 'canceled',
+          exitReason: 'interrupted-by-restart',
+          finalText: '（宿主重启，执行中断，未重发）',
+          durationMs: 0,
+        }).catch((err) => this.log.warn(`[cron-board] 对账取消失败（task=${task.id}）: ${errDetail(err)}`));
+        continue;
+      }
+      const entry: RunningEntry = { exec, cancel: () => {} };
+      this.running.set(task.id, entry);
+      void this.observeExisting(task, exec, entry).catch((err) => {
+        this.log.error(`[cron-board] 观察结算异常（task=${task.id} exec=${exec.id}）: ${errDetail(err)}`);
+      });
+    }
+  }
+
+  /** 观察模式：会话仍在跑（宿主进程内未中断），继续监听 turn/end 至终态。 */
+  private async observeExisting(task: TaskRow, exec: Execution, entry: RunningEntry): Promise<void> {
+    const startedAt = Date.now();
+    let exitReason = 'unknown';
+    let finalText = '';
+    let settled = false;
+    let wake: () => void = () => {};
+    const settledPromise = new Promise<void>((resolve) => {
+      wake = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
+    });
+    const off = this.ctx.on('session/event', (session: { id?: string }, event: SessionEventLike) => {
+      if (!session || session.id !== exec.sessionId) return;
+      if (event.type === 'assistant/message') {
+        const text = extractAssistantText(event.data);
+        if (text !== '') finalText = text;
+      } else if (event.type === 'turn/end') {
+        exitReason = extractEndReason(event.data);
+        wake();
+      }
+    });
+    const timeoutMs = Math.max(1, this.config.runTimeoutMin) * 60_000;
+    const timer = setTimeout(() => {
+      exitReason = 'timeout';
+      wake();
+    }, timeoutMs);
+    try {
+      await settledPromise;
+    } finally {
+      clearTimeout(timer);
+      off();
+    }
+    let status: Execution['status'];
+    if (exitReason === 'timeout') status = 'timeout';
+    else if (exitReason === 'completed' || exitReason === 'unknown') status = 'success';
+    else status = 'failed';
+    if (finalText === '') finalText = status === 'success' ? '（会话已结束，无文本输出）' : '（失败：无文本输出）';
+    await this.finalize(task, exec, {
+      status,
+      exitReason,
+      finalText,
+      durationMs: Date.now() - startedAt,
+    });
+    this.running.delete(task.id);
+  }
+
   isRunning(taskId: string): boolean {
     return this.running.has(taskId);
   }
@@ -147,6 +250,7 @@ export class TaskRunner {
 
   /** 快速启动：创建执行行并进入后台执行链；返回执行行（UI 立即可见 running）。 */
   async launch(task: TaskRow, trigger: Execution['trigger']): Promise<Execution> {
+    if (task.archived) throw Object.assign(new Error('task-archived'), { code: 'archived' });
     if (this.running.has(task.id)) throw Object.assign(new Error('task-already-running'), { code: 'task-running' });
     const exec: Execution = {
       id: newExecId(),
@@ -215,8 +319,13 @@ export class TaskRunner {
       if (wsPath) meta.cwd = wsPath;
       if (presetResolved) meta.agentPreset = presetResolved;
 
-      // 延续会话：任务有活跃会话则 resume（失败自动落回新建）
-      if (task.activeSessionId && registry?.resume) {
+      // 会话复用（开关默认开）：活跃会话在 in-memory 名册中才 resume，否则直接新建；resume 失败落回新建
+      const reuseWanted = task.reuseSession !== false && task.activeSessionId;
+      const inRoster =
+        reuseWanted && task.activeSessionId
+          ? this.sessions()?.get?.(task.activeSessionId) !== undefined
+          : false;
+      if (reuseWanted && inRoster && registry?.resume && task.activeSessionId) {
         try {
           const handle = await registry.resume({
             resumeSessionId: task.activeSessionId,
@@ -290,12 +399,14 @@ export class TaskRunner {
         if (kind === 'error') throw new Error(`权限档 ${permission} 应用被拒绝`);
       }
 
-      // 4. 会话重命名（非致命）
-      try {
-        const st = this.ctx.get('sessionTitle') as unknown as SessionTitleLike | undefined;
-        st?.rename?.(agent.session, `${task.title} · cron`);
-      } catch {
-        /* ignore */
+      // 4. 会话重命名（非致命；复用会话保持标题与历史不变——原版 task-board 语义）
+      if (agent.session.id === exec.sessionId && task.activeSessionId !== exec.sessionId) {
+        try {
+          const st = this.ctx.get('sessionTitle') as unknown as SessionTitleLike | undefined;
+          st?.rename?.(agent.session, `${task.title} · cron`);
+        } catch {
+          /* ignore */
+        }
       }
 
       // 5. 结算监听（turn/end 权威）+ 队列式发送任务 Prompt
@@ -320,7 +431,12 @@ export class TaskRunner {
         }
       });
       try {
-        agent.followup(requireDshLlm().createUserMessage({ content: [{ type: 'text', text: task.prompt }], source: { kind: 'user' } }));
+        agent.followup(
+          requireDshLlm().createUserMessage({
+            content: [{ type: 'text', text: buildPromptWithTags(task) }],
+            source: { kind: 'user' },
+          }),
+        );
       } catch (err) {
         off();
         throw new Error(`任务 Prompt 发送失败: ${errDetail(err)}`);

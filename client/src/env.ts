@@ -22,7 +22,7 @@ export interface SlotsApi {
   register(options: Record<string, unknown>, component: unknown): unknown;
 }
 
-/** 插件入口 apply(ctx) 收到的 ctx（inject = ["slots", "connection", "layout", "locale"]）。 */
+/** 插件入口 apply(ctx) 收到的 ctx（inject = ["slots", "connection", "layout", "locale", "sessions"]）。 */
 export interface CronBoardClientCtx {
   slots: SlotsApi;
   connection?: {
@@ -35,4 +35,13 @@ export interface CronBoardClientCtx {
     getLocale(): unknown;
     subscribe(fn: () => void): () => void;
   };
+  /** 会话服务（原版 task-board 同款）：打开执行会话（sessions.open）。 */
+  sessions?: {
+    open?(sessionId: string): unknown;
+  };
+}
+
+/** client 侧 ctx.get（inject 声明过的服务可经此读取；缺省时降级）。 */
+export function ctxGet(ctx: CronBoardClientCtx, key: string): unknown {
+  return (ctx as unknown as { get?(k: string): unknown }).get?.(key);
 }
