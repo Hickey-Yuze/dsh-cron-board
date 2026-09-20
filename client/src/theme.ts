@@ -144,6 +144,20 @@ const CSS = `
 .dsh-cb-task-time { color: var(--dsh-cb-dim); }
 .dsh-cb-task-status { color: var(--dsh-cb-dim); margin-left: auto; }
 
+/* ── 日志项 ── */
+.dsh-cb-log-item {
+  padding: 10px 12px;
+  background: var(--dsh-cb-card-2);
+  border: 1px solid var(--dsh-cb-border);
+  border-radius: var(--dsh-cb-radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dsh-cb-log-head { display: flex; align-items: center; justify-content: space-between; }
+.dsh-cb-log-task { font-size: 13px; font-weight: 600; color: var(--dsh-cb-text); }
+.dsh-cb-log-meta { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--dsh-cb-dim); }
+
 /* ── 徽章 ─ */
 .dsh-cb-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--dsh-cb-border); color: var(--dsh-cb-dim); background: var(--dsh-cb-card-2); font-weight: 600; }
 .dsh-cb-badge.dsh-cb-ok { color: var(--dsh-cb-ok); border-color: var(--dsh-cb-ok); background: var(--dsh-cb-ok-bg); }
@@ -153,10 +167,10 @@ const CSS = `
 
 /* ── 按钮 ── */
 .dsh-cb-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 13px; border-radius: var(--dsh-cb-radius-sm); border: 1px solid var(--dsh-cb-border-2); background: var(--dsh-cb-card); color: var(--dsh-cb-text); cursor: pointer; font: inherit; font-weight: 500; transition: all 0.15s ease; }
-.dsh-cb-btn:hover:not(:disabled) { background: var(--dsh-cb-hover); }
+.dsh-cb-btn:hover:not(:disabled):not(.dsh-cb-primary):not(.dsh-cb-danger):not(.dsh-cb-ghost) { background: var(--dsh-cb-hover); }
 .dsh-cb-btn:disabled { opacity: .4; cursor: not-allowed; }
 .dsh-cb-btn.dsh-cb-primary { background: var(--dsh-cb-accent); border-color: var(--dsh-cb-accent); color: #fff; box-shadow: var(--dsh-cb-shadow-sm); }
-.dsh-cb-btn.dsh-cb-primary:hover:not(:disabled) { filter: brightness(1.1); }
+.dsh-cb-btn.dsh-cb-primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--dsh-cb-accent); }
 .dsh-cb-btn.dsh-cb-danger { color: var(--dsh-cb-err); border-color: var(--dsh-cb-err); }
 .dsh-cb-btn.dsh-cb-danger:hover:not(:disabled) { background: var(--dsh-cb-err-bg); }
 .dsh-cb-btn.dsh-cb-ghost { border-color: transparent; background: transparent; color: var(--dsh-cb-dim); }
