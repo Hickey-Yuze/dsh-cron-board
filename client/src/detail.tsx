@@ -397,7 +397,7 @@ export function DetailModal(props: {
                   { value: '', label: t('f.pickSessionAuto') },
                   ...(props.meta?.sessions ?? [])
                     .filter((x) => {
-                      const wsPath = meta?.workspaces.find((w) => w.id === workspaceId)?.path;
+                      const wsPath = props.meta?.workspaces.find((w) => w.id === workspaceId)?.path;
                       return wsPath && x.cwd ? x.cwd === wsPath : true;
                     })
                     .map((x) => ({
