@@ -69,6 +69,18 @@ function StatCard(props: {
   );
 }
 
+/** 任务行内联操作小按钮（stopPropagation 防触发整行打开详情）。 */
+function rowAction(icon: string, title: string, onClick: () => void, danger = false): ReactElement {
+  return createElement('button', {
+    className: `dsh-cb-row-action${danger ? ' dsh-cb-row-action-danger' : ''}`,
+    title,
+    onClick: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onClick();
+    },
+  }, icon);
+}
+
 /** 项目分组卡片 */
 function ProjectGroup(props: {
   name: string;
@@ -78,8 +90,11 @@ function ProjectGroup(props: {
   expanded: boolean;
   onToggle: () => void;
   onTaskClick: (task: TaskView) => void;
+  onRun: (task: TaskView) => void;
+  onTestPush: (task: TaskView) => void;
+  onDelete: (task: TaskView) => void;
 }): ReactElement {
-  const { name, color, count, tasks, expanded, onToggle, onTaskClick } = props;
+  const { name, color, count, tasks, expanded, onToggle, onTaskClick, onRun, onTestPush, onDelete } = props;
 
   return createElement(
     'div',
@@ -115,6 +130,11 @@ function ProjectGroup(props: {
                     createElement(Badge, { tone: priorityTone as any }, priority || t('task.low')),
                     createElement('span', { className: 'dsh-cb-task-time' },
                       last ? fmtAgo(last.endedAt ?? last.startedAt) : '-',
+                    ),
+                    createElement('span', { className: 'dsh-cb-task-actions' },
+                      rowAction('▶', t('act.run'), () => onRun(task)),
+                      rowAction('✉', t('act.testPush'), () => onTestPush(task)),
+                      rowAction('🗑', t('act.delete'), () => onDelete(task), true),
                     ),
                     createElement('span', { className: 'dsh-cb-task-status' },
                       last ? t(`st.${last.status}`) : t('st.pending'),
@@ -356,6 +376,9 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
               expanded: expandedProjects.has(name) || idx === 0,
               onToggle: () => toggleProject(name),
               onTaskClick: (task) => setDetailId(task.id),
+              onRun: (task) => void props.rpc('cron-board/task-run', { id: task.id }).then(() => void load()),
+              onTestPush: (task) => void props.rpc('cron-board/push-test', { id: task.id }).then(() => void load()),
+              onDelete: (task) => void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load()),
             });
           }),
     ),
