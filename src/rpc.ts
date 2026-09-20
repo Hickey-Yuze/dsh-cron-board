@@ -149,8 +149,6 @@ export function normalizeDraft(raw: unknown): TaskDraft {
         p.workspaceId === undefined || p.workspaceId === null || p.workspaceId === '' ? undefined : asId(p.workspaceId, 'workspaceId'),
       presetId: p.presetId === undefined || p.presetId === null || p.presetId === '' ? undefined : asString(p.presetId, 'presetId', 128),
       permission: asPermission(p.permission),
-      sessionId:
-        p.sessionId === undefined || p.sessionId === null || p.sessionId === '' ? undefined : asString(p.sessionId, 'sessionId', 64),
     };
   }
   const push = r.push === undefined ? undefined : asPushTarget(r.push);
@@ -280,7 +278,6 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
 
       case 'cron-board/meta': {
         const view: MetaView = {
-          sessions: [],
           workspaces: [],
           presets: [],
           bots: [],
@@ -309,22 +306,6 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             .map((p) => ({ id: p.id as string, title: typeof p.title === 'string' ? p.title : (p.id as string) }));
         } catch (err) {
           deps.log.warn(`[cron-board] meta.presets 失败: ${errDetail(err)}`);
-        }
-        try {
-          // 会话列表（供「指定延续会话」下拉）：sessions 服务鸭子探测，取 id/标题/更新时间/工作目录
-          const sessions = ctx.get('sessions') as unknown as
-            | { list?(): { id?: string; title?: string; updatedAt?: string; cwd?: string; meta?: { cwd?: unknown } }[] }
-            | undefined;
-          view.sessions = (sessions?.list?.() ?? [])
-            .filter((x) => typeof x?.id === 'string')
-            .map((x) => ({
-              id: x.id as string,
-              title: typeof x.title === 'string' && x.title !== '' ? x.title : (x.id as string).slice(0, 8),
-              updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : undefined,
-              cwd: [x.cwd, (x.meta as { cwd?: unknown } | undefined)?.cwd].find((v) => typeof v === 'string') as string | undefined,
-            }));
-        } catch (err) {
-          deps.log.warn(`[cron-board] meta.sessions 失败: ${errDetail(err)}`);
         }
         try {
           view.bots = await deps.pusher.listBots();

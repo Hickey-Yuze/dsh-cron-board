@@ -324,10 +324,9 @@ export class TaskRunner {
 
       // 会话复用（开关默认开）：优先复用 registry 中的活 agent（其仍持会话写句柄，
       // 直接 resume 会撞 SessionAlreadyOwnedError）；无活 agent 才走 resume（句柄已释放）。
-      // 目标会话：任务钉住的指定会话（pinned.sessionId）优先，缺省用上次执行的会话
-      const reuseTarget = task.pinned.sessionId || task.activeSessionId;
+      const reuseTarget = task.activeSessionId;
       const reuseWanted = task.reuseSession !== false && reuseTarget;
-      this.log.info(`[cron-board] 会话复用检查：task=${task.id} reuseWanted=${reuseWanted} target=${reuseTarget ?? 'none'}（pinned=${task.pinned.sessionId ?? '-'} last=${task.activeSessionId ?? '-'}） registry=${!!registry}`);
+      this.log.info(`[cron-board] 会话复用检查：task=${task.id} reuseWanted=${reuseWanted} target=${reuseTarget ?? 'none'} registry=${!!registry}`);
       if (reuseWanted && reuseTarget) {
         const live = registry?.get?.(reuseTarget);
         if (live?.session) {
