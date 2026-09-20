@@ -93,3 +93,27 @@ export function Select(props: {
 export function ErrorBox(props: { children?: ReactNode }): ReactElement {
   return createElement('div', { className: 'dsh-cb-errbox' }, props.children);
 }
+
+/** 标签名 → 稳定色相（原版 issue #1521 语义：哈希取色，不存储颜色）。 */
+export function tagHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+/** 标签徽章（哈希色调，board/detail 共用；放 ui 层避免 board↔detail 循环导入）。 */
+export function TagBadge(props: { tag: { name: string } }): ReactElement {
+  const hue = tagHue(props.tag.name);
+  return createElement(
+    'span',
+    {
+      className: 'dsh-cb-tagbadge',
+      style: {
+        color: `hsl(${hue} 65% 62%)`,
+        background: `hsl(${hue} 45% 30% / 0.35)`,
+        border: `1px solid hsl(${hue} 50% 50% / 0.45)`,
+      },
+    },
+    props.tag.name,
+  );
+}

@@ -3,14 +3,30 @@
  * 表单状态仅在挂载时从快照初始化（轮询刷新不重置）；切换任务由父组件 key 重挂载。
  */
 import { createElement, useEffect, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { BoardSnapshot, MetaView, TaskTag, TaskView } from '../../src/contract.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
 import { lang, t } from './i18n.js';
 import type { RpcFn } from './rpc.js';
-import { Badge, Btn, Dot, ErrorBox, Field, Select, TextArea, TextInput } from './ui.js';
-import { TagBadge } from './board.js';
+import { Badge, Btn, Dot, ErrorBox, Field, Select, TagBadge, TextArea, TextInput } from './ui.js';
+
+/**
+ * Portal 挂载点：弹层渲染进 document.body，脱离看板容器。
+ * position:fixed 在带 transform 的祖先里会退化为相对该祖先定位——宿主面板滚动/动画容器
+ * 可能带 transform，导致弹层「看着在原地、点击命中在别处」（v1.1.0 新建弹层卡死实测）。
+ * react-dom 不可用时降级原地渲染。
+ */
+let portalApi: { createPortal?(node: ReactNode, container: Element): ReactNode } | null | undefined;
+function getPortal(): { createPortal?(node: ReactNode, container: Element): ReactNode } | null {
+  if (portalApi !== undefined) return portalApi;
+  try {
+    portalApi = require('react-dom') as { createPortal?(node: ReactNode, container: Element): ReactNode };
+  } catch {
+    portalApi = null;
+  }
+  return portalApi;
+}
 
 function pushOptions(meta: MetaView | null): { value: string; label: string }[] {
   const options = [{ value: '', label: t('f.pushNone') }];
@@ -75,6 +91,11 @@ export function DetailModal(props: {
 
   async function save(): Promise<void> {
     if (title.trim() === '' || prompt.trim() === '' || !cronOk) return;
+    // 同名任务提醒（编辑排除自身；归档任务不算）——确认后才允许保存
+    const dup = (mounted?.tasks ?? []).some(
+      (x) => x.id !== task?.id && x.archived !== true && x.title.trim() === title.trim(),
+    );
+    if (dup && typeof window !== 'undefined' && !window.confirm(t('dl.duplicateConfirm'))) return;
     setBusy(true);
     setErr(null);
     try {
@@ -171,7 +192,7 @@ export function DetailModal(props: {
     setTagDraft({ name: '', promptPrefix: '' });
   }
 
-  return createElement(
+  const modalTree = createElement(
     'div',
     {
       className: 'dsh-cb-modal-mask',
@@ -346,12 +367,11 @@ export function DetailModal(props: {
           { className: 'dsh-cb-checkrow' },
           createElement('input', {
             type: 'checkbox',
-            id: 'dsh-cb-reuse',
             checked: reuseSession,
             disabled: archived,
             onChange: (e: { target: { checked: boolean } }) => setReuseSession(e.target.checked),
           }),
-          createElement('label', { htmlFor: 'dsh-cb-reuse', style: { fontSize: 12 } }, t('f.reuseSession')),
+          createElement('span', { style: { fontSize: 12 } }, t('f.reuseSession')),
           createElement('span', { className: 'dsh-cb-hint' }, t('f.reuseHint')),
         ),
         createElement(
@@ -575,6 +595,16 @@ export function DetailModal(props: {
       ),
     ),
   );
+  // Portal 到 document.body：脱离看板容器，规避 transform 祖先导致的 fixed 定位错位与点击命中偏移
+  const portal = getPortal()?.createPortal;
+  if (portal && typeof document !== 'undefined') {
+    try {
+      return portal(modalTree, document.body) as ReactElement;
+    } catch {
+      /* 降级原地渲染 */
+    }
+  }
+  return modalTree;
 }
 
 /** 把已有 cron 表达式拆成 5 个字段输入（缺段补空=通配，仅取前 5 段）。 */

@@ -6,13 +6,13 @@
  */
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { BoardSnapshot, Execution, MetaView, TaskTag, TaskView } from '../../src/contract.js';
+import type { BoardSnapshot, Execution, MetaView, TaskView } from '../../src/contract.js';
 import { describeCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, fmtFuture } from './format.js';
 import { lang, t } from './i18n.js';
 import { DetailModal } from './detail.js';
 import type { RpcFn } from './rpc.js';
-import { Badge, Btn, Dot, Select, TextInput } from './ui.js';
+import { Badge, Btn, Dot, Select, TagBadge, TextInput } from './ui.js';
 
 function statusTone(s: Execution['status']): 'ok' | 'err' | 'warn' | 'accent' {
   if (s === 'success') return 'ok';
@@ -32,29 +32,6 @@ function skipText(reason: string): string {
   const key = `skip.${reason}`;
   const v = t(key);
   return v === key ? reason : v;
-}
-
-/** 标签名 → 稳定色相（原版 issue #1521 语义：哈希取色，不存储颜色）。 */
-export function tagHue(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return h % 360;
-}
-
-export function TagBadge(props: { tag: TaskTag }): ReactElement {
-  const hue = tagHue(props.tag.name);
-  return createElement(
-    'span',
-    {
-      className: 'dsh-cb-tagbadge',
-      style: {
-        color: `hsl(${hue} 65% 62%)`,
-        background: `hsl(${hue} 45% 30% / 0.35)`,
-        border: `1px solid hsl(${hue} 50% 50% / 0.45)`,
-      },
-    },
-    props.tag.name,
-  );
 }
 
 function TaskCard(props: { task: TaskView; onOpen: () => void }): ReactElement {

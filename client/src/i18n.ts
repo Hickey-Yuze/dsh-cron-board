@@ -123,6 +123,7 @@ const zh: Record<string, string> = {
   'dl.ranOnce': '该任务已执行过，修改后确认门将重新武装',
   'dl.archived': '任务已归档（只读）：恢复后才能编辑或执行',
   'dl.restored': '任务已恢复（默认停用，按需启用）',
+  'dl.duplicateConfirm': '已存在同名任务，仍要保存这条重复的吗？',
 
   'set.title': '定时任务看板',
   'set.desc': 'cron 定时 agent 会话任务 + 执行终态机器人推送。看板入口在左侧栏。',
@@ -268,6 +269,7 @@ const en: Record<string, string> = {
   'dl.ranOnce': 'This task has run before; editing re-arms the confirmation gate',
   'dl.archived': 'Task is archived (read-only): restore it to edit or run',
   'dl.restored': 'Task restored (disabled by default — enable when needed)',
+  'dl.duplicateConfirm': 'A task with the same title already exists — save this duplicate anyway?',
 
   'set.title': 'Cron Task Board',
   'set.desc': 'Scheduled agent-session tasks via cron, with bot push on completion. The board lives in the sidebar.',
@@ -302,6 +304,8 @@ function normalizeLang(snapshot: unknown): 'zh' | 'en' {
   const snap = snapshot as { id?: unknown; locale?: unknown; language?: unknown; tag?: unknown } | null | undefined;
   const raw =
     [snap?.id, snap?.locale, snap?.language, snap?.tag].find((v) => typeof v === 'string' && v !== '') ?? '';
+  // 探测不到（空值）默认 zh：describeCron 等直调 lang() 的场景在宿主 locale API 缺失时保持中文
+  if (raw === '') return 'zh';
   return String(raw).toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
 
