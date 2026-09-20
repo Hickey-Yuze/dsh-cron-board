@@ -318,15 +318,16 @@ export class TaskRunner {
       const meta: Record<string, unknown> = {};
       if (wsPath) meta.cwd = wsPath;
       if (presetResolved) meta.agentPreset = presetResolved;
-      meta.source = 'cron-board'; // 标记会话来源
-      meta.channel = 'dingtalk'; // 模拟 IM 渠道，触发闪电图标
+      meta.source = 'cron-board'; // 标记会话来源（闪电图标由宿主 IM 渠道自动添加，插件无法模拟）
 
       // 会话复用（开关默认开）：活跃会话在 in-memory 名册中才 resume，否则直接新建；resume 失败落回新建
       const reuseWanted = task.reuseSession !== false && task.activeSessionId;
+      const sessionsSvc = this.sessions();
       const inRoster =
         reuseWanted && task.activeSessionId
-          ? this.sessions()?.get?.(task.activeSessionId) !== undefined
+          ? sessionsSvc?.get?.(task.activeSessionId) !== undefined
           : false;
+      this.log.info(`[cron-board] 会话复用检查：task=${task.id} reuseWanted=${reuseWanted} activeSessionId=${task.activeSessionId ?? 'none'} inRoster=${inRoster} sessionsSvc=${!!sessionsSvc}`);
       if (reuseWanted && inRoster && registry?.resume && task.activeSessionId) {
         try {
           const handle = await registry.resume({
@@ -527,6 +528,7 @@ export class TaskRunner {
           resultPath,
           reason: outcome.exitReason,
           content: outcome.finalText,
+          sessionId: exec.sessionId, // 推送里带会话 ID，方便跳转
         }),
       );
     }
