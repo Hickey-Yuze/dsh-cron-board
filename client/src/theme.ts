@@ -175,7 +175,7 @@ const CSS = `
 .dsh-cb-log-meta { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--dsh-cb-dim); }
 
 /* ── 徽章 ─ */
-.dsh-cb-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--dsh-cb-border); color: var(--dsh-cb-dim); background: var(--dsh-cb-card-2); font-weight: 600; }
+.dsh-cb-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--dsh-cb-border); color: var(--dsh-cb-dim); background: var(--dsh-cb-card-2); font-weight: 600; white-space: nowrap; }
 .dsh-cb-badge.dsh-cb-ok { color: var(--dsh-cb-ok); border-color: var(--dsh-cb-ok); background: var(--dsh-cb-ok-bg); }
 .dsh-cb-badge.dsh-cb-warn { color: var(--dsh-cb-warn); border-color: var(--dsh-cb-warn); background: var(--dsh-cb-warn-bg); }
 .dsh-cb-badge.dsh-cb-err { color: var(--dsh-cb-err); border-color: var(--dsh-cb-err); background: var(--dsh-cb-err-bg); }
