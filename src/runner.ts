@@ -318,6 +318,7 @@ export class TaskRunner {
       const meta: Record<string, unknown> = {};
       if (wsPath) meta.cwd = wsPath;
       if (presetResolved) meta.agentPreset = presetResolved;
+      meta.source = 'cron-board'; // 标记会话来源，宿主侧边栏显示闪电图标
 
       // 会话复用（开关默认开）：活跃会话在 in-memory 名册中才 resume，否则直接新建；resume 失败落回新建
       const reuseWanted = task.reuseSession !== false && task.activeSessionId;
