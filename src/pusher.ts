@@ -146,13 +146,11 @@ export class Pusher {
     resultPath?: string;
     reason?: string;
     content?: string;
-    sessionId?: string; // 执行会话 ID，推送里带跳转链接
     lang?: 'zh' | 'en';
   }): string {
     const lang = input.lang ?? 'zh';
     const dur = input.durationMs !== undefined ? fmtDuration(input.durationMs, lang) : undefined;
     const body = clampBody(input.content);
-    const sessionLink = input.sessionId ? `\n会话：${input.sessionId}` : '';
     if (lang === 'en') {
       const lines = [input.ok ? '✅ Cron task finished' : '❌ Cron task failed', `Task: ${input.title}`, `Status: ${input.status}`];
       if (dur !== undefined) lines.push(`Duration: ${dur}`);
@@ -160,7 +158,6 @@ export class Pusher {
       if (body !== '') lines.push(body);
       else if (input.resultPath !== undefined) lines.push(`Result archived: ${input.resultPath}`);
       if (!input.ok && input.reason !== undefined) lines.push(`Reason: ${input.reason}`);
-      if (sessionLink) lines.push(sessionLink);
       return lines.join('\n');
     }
     const lines = [
@@ -176,7 +173,6 @@ export class Pusher {
       lines.push(`结果已存档：${input.resultPath}`);
     }
     if (!input.ok && input.reason !== undefined) lines.push(`失败原因：${input.reason}`);
-    if (sessionLink) lines.push(sessionLink);
     return lines.join('\n');
   }
 }
