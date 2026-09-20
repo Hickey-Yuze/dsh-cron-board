@@ -398,7 +398,7 @@ export function DetailModal(props: {
                   ...(props.meta?.sessions ?? [])
                     .filter((x) => {
                       const wsPath = meta?.workspaces.find((w) => w.id === workspaceId)?.path;
-                      return wsPath ? x.cwd === wsPath : true;
+                      return wsPath && x.cwd ? x.cwd === wsPath : true;
                     })
                     .map((x) => ({
                       value: x.id,
