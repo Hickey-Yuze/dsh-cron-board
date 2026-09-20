@@ -1,7 +1,6 @@
 /**
  * 看板主面板（main 键位槽位 dsh-cron-board）：
- * 四列布局（草稿/已排程/运行中/最近执行）+ 搜索 + 项目分区 + 标签筛选 + 推送通道徽章
- * + 归档视图 + 详情弹层。
+ * 深色主题 + 统计概览 + 项目分组折叠布局。
  * Host snapshot 是唯一已确认 UI 状态；5s 轮询 + 动作后即时刷新。
  */
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react';
@@ -34,47 +33,96 @@ function skipText(reason: string): string {
   return v === key ? reason : v;
 }
 
-function TaskCard(props: { task: TaskView; onOpen: () => void }): ReactElement {
-  const { task } = props;
-  const last = task.executions[0];
-  const perm = task.pinned.permission ?? 'read-only';
+/** 统计卡片 */
+function StatCard(props: {
+  icon: ReactNode;
+  label: string;
+  count: number;
+  unit: string;
+  change?: number;
+  tone?: 'default' | 'ok' | 'warn' | 'err' | 'accent';
+}): ReactElement {
+  const { icon, label, count, unit, change, tone = 'default' } = props;
+  const changeText = change !== undefined
+    ? `${change >= 0 ? '↑' : '↓'}${Math.abs(change)}%`
+    : null;
+  const changeTone = change !== undefined ? (change >= 0 ? 'ok' : 'err') : undefined;
+
   return createElement(
-    'button',
-    { className: 'dsh-cb-card', onClick: props.onOpen, type: 'button' },
-    createElement(
-      'div',
-      { className: 'dsh-cb-card-title' },
-      task.needsConfirm && !task.confirmed ? createElement(Badge, { tone: 'warn' }, t('board.confirmHint')) : null,
-      createElement('span', { className: 'dsh-cb-card-title-text' }, task.title),
+    'div',
+    { className: `dsh-cb-stat-card dsh-cb-stat-${tone}` },
+    createElement('div', { className: 'dsh-cb-stat-head' },
+      createElement('span', { className: 'dsh-cb-stat-label' }, label),
+      createElement('div', { className: 'dsh-cb-stat-icon' }, icon),
     ),
-    (task.tags ?? []).length > 0
-      ? createElement(
-          'div',
-          { className: 'dsh-cb-filterrow', style: { marginTop: 2 } },
-          (task.tags ?? []).map((tag) => createElement(TagBadge, { key: tag.name, tag })),
+    createElement('div', { className: 'dsh-cb-stat-body' },
+      createElement('span', { className: 'dsh-cb-stat-count' }, String(count)),
+      createElement('span', { className: 'dsh-cb-stat-unit' }, unit),
+    ),
+    changeText
+      ? createElement('div', { className: 'dsh-cb-stat-foot' },
+          createElement('span', { className: 'dsh-cb-stat-change-label' }, t('stat.vsYesterday')),
+          createElement('span', { className: `dsh-cb-stat-change dsh-cb-change-${changeTone}` }, changeText),
         )
       : null,
+  );
+}
+
+/** 项目分组卡片 */
+function ProjectGroup(props: {
+  name: string;
+  color: string;
+  count: number;
+  tasks: TaskView[];
+  expanded: boolean;
+  onToggle: () => void;
+  onTaskClick: (task: TaskView) => void;
+}): ReactElement {
+  const { name, color, count, tasks, expanded, onToggle, onTaskClick } = props;
+
+  return createElement(
+    'div',
+    { className: 'dsh-cb-project-group' },
     createElement(
       'div',
-      { className: 'dsh-cb-card-meta' },
-      createElement('span', null, describeCron(task.cron, lang())),
-      task.enabled && task.nextRunAt ? createElement('span', null, `${t('board.next')} ${fmtFuture(task.nextRunAt)}`) : null,
-      task.lastSkipReason ? createElement('span', null, skipText(task.lastSkipReason)) : null,
+      { className: 'dsh-cb-project-head', onClick: onToggle },
+      createElement('div', { className: 'dsh-cb-project-title-row' },
+        createElement('span', { className: 'dsh-cb-project-dot', style: { background: color } }),
+        createElement('strong', { className: 'dsh-cb-project-name' }, name),
+        createElement('span', { className: 'dsh-cb-project-count' }, String(count)),
+      ),
+      createElement('span', { className: `dsh-cb-chevron ${expanded ? 'dsh-cb-chevron-open' : ''}` }, '▼'),
     ),
-    createElement(
-      'div',
-      { className: 'dsh-cb-badges' },
-      createElement(Badge, { tone: perm === 'read-only' ? 'default' : 'warn' }, t(`perm.${perm}`)),
-      last
-        ? createElement(
-            Badge,
-            { tone: statusTone(last.status) },
-            createElement(Dot, { tone: last.status === 'running' ? 'run' : dotTone(last.status) }),
-            ` ${t(`st.${last.status}`)}`,
-          )
-        : createElement(Badge, {}, createElement(Dot, { tone: 'idle' }), ` ${t('st.pending')}`),
-      task.push ? createElement(Badge, { tone: 'accent' }, `${t('board.channel')} · ${task.push.targetId}`) : null,
-    ),
+    expanded
+      ? createElement(
+          'div',
+          { className: 'dsh-cb-project-body' },
+          tasks.length === 0
+            ? createElement('div', { className: 'dsh-cb-empty-task' }, t('board.noTask'))
+            : tasks.map((task) => {
+                const last = task.executions[0];
+                const priority = task.tags?.[0]?.name ?? '';
+                const priorityTone = priority === '高' ? 'err' : priority === '中' ? 'warn' : 'ok';
+                return createElement(
+                  'div',
+                  { key: task.id, className: 'dsh-cb-task-item', onClick: () => onTaskClick(task) },
+                  createElement('div', { className: 'dsh-cb-task-row' },
+                    createElement('span', { className: 'dsh-cb-task-bullet' }),
+                    createElement('span', { className: 'dsh-cb-task-title' }, task.title),
+                  ),
+                  createElement('div', { className: 'dsh-cb-task-meta' },
+                    createElement(Badge, { tone: priorityTone as any }, priority || t('task.low')),
+                    createElement('span', { className: 'dsh-cb-task-time' },
+                      last ? fmtAgo(last.endedAt ?? last.startedAt) : '-',
+                    ),
+                    createElement('span', { className: 'dsh-cb-task-status' },
+                      last ? t(`st.${last.status}`) : t('st.pending'),
+                    ),
+                  ),
+                );
+              }),
+        )
+      : null,
   );
 }
 
@@ -83,10 +131,9 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [meta, setMeta] = useState<MetaView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [project, setProject] = useState('');
-  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [detailId, setDetailId] = useState<string | null | undefined>(undefined); // undefined=关闭, null=新建
+  const [detailId, setDetailId] = useState<string | null | undefined>(undefined);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const r = await props.rpc('cron-board/state');
@@ -115,51 +162,52 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const activeTasks = tasks.filter((task) => !task.archived);
   const archivedTasks = tasks.filter((task) => task.archived);
 
-  // 全账本在用标签（含归档任务）作为筛选候选
-  const allTags = useMemo(() => {
-    const names: string[] = [];
-    for (const task of tasks) for (const tag of task.tags ?? []) if (!names.includes(tag.name)) names.push(tag.name);
-    return names;
-  }, [tasks]);
+  // 统计
+  const todoCount = activeTasks.filter((t) => !t.enabled).length;
+  const runningCount = activeTasks.filter((t) => t.running).length;
+  const completedCount = activeTasks.filter((t) => {
+    const last = t.executions[0];
+    return last && last.status === 'success';
+  }).length;
+  const overdueCount = activeTasks.filter((t) => {
+    if (!t.enabled || !t.nextRunAt) return false;
+    return new Date(t.nextRunAt).getTime() < Date.now();
+  }).length;
+
+  // 按项目分组
+  const projectGroups = useMemo(() => {
+    const groups = new Map<string, TaskView[]>();
+    for (const task of activeTasks) {
+      const wsId = task.pinned.workspaceId || '';
+      const ws = meta?.workspaces.find((w) => w.id === wsId);
+      const name = ws?.title || t('board.other');
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name)!.push(task);
+    }
+    return Array.from(groups.entries());
+  }, [activeTasks, meta]);
+
+  const toggleProject = (name: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const projectColors = ['#4b6bfb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = activeTasks;
-    if (project !== '') list = list.filter((task) => task.pinned.workspaceId === project);
-    if (tagFilter.length > 0) list = list.filter((task) => (task.tags ?? []).some((tag) => tagFilter.includes(tag.name)));
-    if (q !== '') {
-      list = list.filter(
-        (task) =>
-          task.title.toLowerCase().includes(q) ||
-          task.prompt.toLowerCase().includes(q) ||
-          (task.tags ?? []).some((tag) => tag.name.toLowerCase().includes(q)),
-      );
-    }
-    return list;
-  }, [activeTasks, search, project, tagFilter]);
-
-  const drafts = filtered.filter((task) => !task.enabled);
-  const scheduled = filtered.filter((task) => task.enabled && !task.running);
-  const running = filtered.filter((task) => task.running);
-  const feed = useMemo(
-    () => filtered.flatMap((task) => task.executions.map((exec) => ({ task, exec }))).slice(0, 12),
-    [filtered],
-  );
-
-  const column = (title: string, count: number, body: ReactNode) =>
-    createElement(
-      'div',
-      { className: 'dsh-cb-col', key: title },
-      createElement(
-        'div',
-        { className: 'dsh-cb-col-head' },
-        title,
-        createElement('span', { className: 'dsh-cb-col-count' }, String(count)),
-      ),
-      createElement('div', { className: 'dsh-cb-col-body' }, body),
+    if (q === '') return activeTasks;
+    return activeTasks.filter(
+      (task) =>
+        task.title.toLowerCase().includes(q) ||
+        task.prompt.toLowerCase().includes(q) ||
+        (task.tags ?? []).some((tag) => tag.name.toLowerCase().includes(q)),
     );
-
-  const emptyCell = (text: string) => createElement('div', { className: 'dsh-cb-col-empty' }, text);
+  }, [activeTasks, search]);
 
   const pushChannelBadge = snap
     ? createElement(
@@ -173,93 +221,55 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       )
     : null;
 
-  const filterRow = createElement(
-    'div',
-    { className: 'dsh-cb-filterrow' },
-    createElement(Select, {
-      value: project,
-      onChange: setProject,
-      options: [{ value: '', label: t('board.projectAll') }].concat(
-        (meta?.workspaces ?? []).map((w) => ({ value: w.id, label: w.title })),
-      ),
-    }),
-    allTags.length > 0
-      ? allTags.map((name) =>
-          createElement(
-            'button',
-            {
-              key: name,
-              type: 'button',
-              className: `dsh-cb-chip${tagFilter.includes(name) ? ' dsh-cb-chip-on' : ''}`,
-              onClick: () =>
-                setTagFilter((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name])),
-            },
-            name,
-          ),
-        )
-      : null,
-    createElement('div', { className: 'dsh-cb-spacer' }),
-    createElement(
-      Btn,
-      { kind: showArchived ? 'primary' : 'ghost', onClick: () => setShowArchived((v) => !v) },
-      `${t('board.archived')}${archivedTasks.length > 0 ? ` (${archivedTasks.length})` : ''}`,
-    ),
-  );
-
-  const archivedView = showArchived
-    ? createElement(
-        'div',
-        { className: 'dsh-cb-modal-body', style: { paddingTop: 0 } },
-        archivedTasks.length === 0
-          ? createElement('div', { className: 'dsh-cb-notebox' }, t('board.archivedEmpty'))
-          : archivedTasks.map((task) =>
-              createElement(
-                'div',
-                { className: 'dsh-cb-notebox', key: task.id, style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                createElement('strong', { style: { fontSize: 12 } }, task.title),
-                (task.tags ?? []).map((tag) => createElement(TagBadge, { key: tag.name, tag })),
-                createElement('div', { className: 'dsh-cb-row-right' }),
-                createElement(Btn, { onClick: () => setDetailId(task.id) }, t('act.edit')),
-                createElement(
-                  Btn,
-                  {
-                    disabled: task.running,
-                    onClick: () =>
-                      void props.rpc('cron-board/task-restore', { id: task.id }).then(() => void load()),
-                  },
-                  t('act.restore'),
-                ),
-                createElement(
-                  Btn,
-                  {
-                    kind: 'danger',
-                    disabled: task.running,
-                    onClick: () => {
-                      if (typeof window !== 'undefined' && !window.confirm(t('dl.deleteConfirm'))) return;
-                      void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load());
-                    },
-                  },
-                  t('act.delete'),
-                ),
-              ),
-            ),
-      )
-    : null;
-
   return createElement(
     'div',
     { className: 'dsh-cb-root' },
+    // 顶部统计卡片
+    createElement(
+      'div',
+      { className: 'dsh-cb-stats-row' },
+      createElement(StatCard, {
+        icon: createElement('span', null, '📋'),
+        label: t('stat.todo'),
+        count: todoCount,
+        unit: t('stat.tasks'),
+        tone: 'default',
+      }),
+      createElement(StatCard, {
+        icon: createElement('span', null, '⚡'),
+        label: t('stat.running'),
+        count: runningCount,
+        unit: t('stat.tasks'),
+        tone: 'accent',
+      }),
+      createElement(StatCard, {
+        icon: createElement('span', null, '✓'),
+        label: t('stat.completed'),
+        count: completedCount,
+        unit: t('stat.tasks'),
+        tone: 'ok',
+      }),
+      createElement(StatCard, {
+        icon: createElement('span', null, '⚠'),
+        label: t('stat.overdue'),
+        count: overdueCount,
+        unit: t('stat.tasks'),
+        tone: 'err',
+      }),
+    ),
+
+    // 标题栏
     createElement(
       'div',
       { className: 'dsh-cb-header' },
       createElement('h2', { className: 'dsh-cb-title' }, t('board.title')),
       pushChannelBadge,
-      snap ? createElement('span', { className: 'dsh-cb-sub' }, `${t('board.revision')} ${snap.revision}`) : null,
       createElement('div', { className: 'dsh-cb-spacer' }),
       createElement(TextInput, { value: search, onChange: setSearch, placeholder: t('board.search') }),
       createElement(Btn, { kind: 'primary', onClick: () => setDetailId(null) }, t('board.new')),
     ),
-    filterRow,
+
+    // 错误提示
     err !== null
       ? createElement(
           'div',
@@ -268,70 +278,74 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
           createElement(Btn, { onClick: () => void load() }, t('board.retry')),
         )
       : null,
-    archivedView,
+
+    // 项目分组列表
     createElement(
       'div',
-      { className: 'dsh-cb-cols' },
-      column(
-        `${t('col.draft')}`,
-        drafts.length,
-        drafts.length === 0
-          ? emptyCell(t('board.empty'))
-          : drafts.map((task) => createElement(TaskCard, { key: task.id, task, onOpen: () => setDetailId(task.id) })),
-      ),
-      column(
-        `${t('col.scheduled')}`,
-        scheduled.length,
-        scheduled.length === 0
-          ? emptyCell(t('board.empty'))
-          : scheduled.map((task) => createElement(TaskCard, { key: task.id, task, onOpen: () => setDetailId(task.id) })),
-      ),
-      column(
-        `${t('col.running')}`,
-        running.length,
-        running.length === 0
-          ? emptyCell(t('board.feedEmpty'))
-          : running.map((task) => createElement(TaskCard, { key: task.id, task, onOpen: () => setDetailId(task.id) })),
-      ),
-      column(
-        `${t('col.recent')}`,
-        feed.length,
-        feed.length === 0
-          ? emptyCell(t('board.feedEmpty'))
-          : feed.map(({ task, exec }) =>
-              createElement(
-                'button',
-                {
-                  className: 'dsh-cb-card',
-                  key: `${task.id}-${exec.id}`,
-                  onClick: () => setDetailId(task.id),
-                  type: 'button',
-                },
-                createElement(
-                  'div',
-                  { className: 'dsh-cb-card-title' },
-                  createElement(Dot, { tone: dotTone(exec.status) }),
-                  createElement('span', { className: 'dsh-cb-card-title-text' }, task.title),
-                ),
-                createElement(
-                  'div',
-                  { className: 'dsh-cb-exec-meta' },
-                  createElement('span', null, `${t(`exec.trigger.${exec.trigger}`)} · ${t(`st.${exec.status}`)}`),
-                  createElement('span', null, fmtAgo(exec.endedAt ?? exec.startedAt)),
-                  exec.durationMs !== undefined ? createElement('span', null, fmtDur(exec.durationMs)) : null,
-                  exec.push ? createElement('span', null, `${t('exec.push')}: ${t(`push.${exec.push.state}`)}`) : null,
-                ),
-              ),
-            ),
-      ),
+      { className: 'dsh-cb-projects' },
+      projectGroups.length === 0
+        ? createElement('div', { className: 'dsh-cb-empty' }, t('board.empty'))
+        : projectGroups.map(([name, tasks], idx) => {
+            const filteredTasks = filtered.filter((task) => {
+              const wsId = task.pinned.workspaceId || '';
+              const ws = meta?.workspaces.find((w) => w.id === wsId);
+              return (ws?.title ?? t('board.other')) === name;
+            });
+            return createElement(ProjectGroup, {
+              key: name,
+              name,
+              color: projectColors[idx % projectColors.length] ?? '#4b6bfb',
+              count: filteredTasks.length,
+              tasks: filteredTasks,
+              expanded: expandedProjects.has(name) || idx === 0,
+              onToggle: () => toggleProject(name),
+              onTaskClick: (task) => setDetailId(task.id),
+            });
+          }),
     ),
-    meta && meta.pushMode === 'unavailable' && tasks.some((task) => task.push)
+
+    // 归档视图
+    showArchived
       ? createElement(
           'div',
           { className: 'dsh-cb-modal-body', style: { paddingTop: 0 } },
-          createElement('div', { className: 'dsh-cb-notebox' }, t('push.unavailableHint')),
+          archivedTasks.length === 0
+            ? createElement('div', { className: 'dsh-cb-notebox' }, t('board.archivedEmpty'))
+            : archivedTasks.map((task) =>
+                createElement(
+                  'div',
+                  { className: 'dsh-cb-notebox', key: task.id, style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                  createElement('strong', { style: { fontSize: 12 } }, task.title),
+                  (task.tags ?? []).map((tag) => createElement(TagBadge, { key: tag.name, tag })),
+                  createElement('div', { className: 'dsh-cb-row-right' }),
+                  createElement(Btn, { onClick: () => setDetailId(task.id) }, t('act.edit')),
+                  createElement(
+                    Btn,
+                    {
+                      disabled: task.running,
+                      onClick: () =>
+                        void props.rpc('cron-board/task-restore', { id: task.id }).then(() => void load()),
+                    },
+                    t('act.restore'),
+                  ),
+                  createElement(
+                    Btn,
+                    {
+                      kind: 'danger',
+                      disabled: task.running,
+                      onClick: () => {
+                        if (typeof window !== 'undefined' && !window.confirm(t('dl.deleteConfirm'))) return;
+                        void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load());
+                      },
+                    },
+                    t('act.delete'),
+                  ),
+                ),
+              ),
         )
       : null,
+
+    // 详情弹层
     detailId !== undefined
       ? createElement(DetailModal, {
           key: detailId ?? 'new',
