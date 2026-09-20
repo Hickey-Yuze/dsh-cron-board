@@ -23,6 +23,17 @@ const zh: Record<string, string> = {
   'board.projectAll': '全部项目',
   'board.archivedBack': '返回看板',
   'board.openSession': '打开会话',
+  'board.other': '其他',
+  'board.noTask': '暂无任务，点击「+」添加',
+
+  'stat.todo': '今日待办',
+  'stat.running': '进行中',
+  'stat.completed': '已完成',
+  'stat.overdue': '逾期任务',
+  'stat.tasks': '项任务',
+  'stat.vsYesterday': '较昨日',
+
+  'task.low': '低',
 
   'col.draft': '草稿',
   'col.scheduled': '已排程',
@@ -170,6 +181,17 @@ const en: Record<string, string> = {
   'board.projectAll': 'All projects',
   'board.archivedBack': 'Back to board',
   'board.openSession': 'Open session',
+  'board.other': 'Other',
+  'board.noTask': 'No tasks yet, click "+" to add',
+
+  'stat.todo': 'To Do',
+  'stat.running': 'In Progress',
+  'stat.completed': 'Completed',
+  'stat.overdue': 'Overdue',
+  'stat.tasks': 'tasks',
+  'stat.vsYesterday': 'vs yesterday',
+
+  'task.low': 'Low',
 
   'col.draft': 'Draft',
   'col.scheduled': 'Scheduled',
