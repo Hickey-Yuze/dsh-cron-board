@@ -35,7 +35,8 @@ export function DetailModal(props: {
 
   const [title, setTitle] = useState(task?.title ?? '');
   const [prompt, setPrompt] = useState(task?.prompt ?? '');
-  const [cron, setCron] = useState(task?.cron ?? '0 9 * * 1');
+  const [cronFields, setCronFields] = useState<string[]>(splitCronFields(task?.cron ?? '0 9 * * 1'));
+  const cron = cronFields.map((f) => (f.trim() === '' ? '*' : f.trim())).join(' ');
   const [enabled, setEnabled] = useState(task?.enabled ?? true);
   const [workspaceId, setWorkspaceId] = useState(task?.pinned.workspaceId ?? '');
   const [presetId, setPresetId] = useState(task?.pinned.presetId ?? '');
@@ -195,8 +196,25 @@ export function DetailModal(props: {
         createElement(Field, { label: t('f.prompt') }, createElement(TextArea, { value: prompt, onChange: setPrompt, placeholder: t('f.promptPh') })),
         createElement(
           Field,
-          { label: t('f.cron'), hint: cronPreview },
-          createElement(TextInput, { value: cron, onChange: setCron }),
+          { label: t('f.cronFields'), hint: cronPreview },
+          createElement(
+            'div',
+            { className: 'dsh-cb-crongrid' },
+            (['min', 'hour', 'dom', 'mon', 'dow'] as const).map((key, i) =>
+              createElement(
+                'div',
+                { className: 'dsh-cb-croncell', key },
+                createElement('span', { className: 'dsh-cb-label' }, t(`f.cronField.${key}`)),
+                createElement('input', {
+                  className: 'dsh-cb-input',
+                  value: cronFields[i] ?? '',
+                  placeholder: '*',
+                  onChange: (e: { target: { value: string } }) =>
+                    setCronFields((prev) => prev.map((v, j) => (j === i ? e.target.value : v))),
+                }),
+              ),
+            ),
+          ),
           !cronOk
             ? createElement('span', { className: 'dsh-cb-hint', style: { color: 'var(--dsh-cb-err, #d5372f)' } }, 'cron: invalid')
             : null,
@@ -407,4 +425,10 @@ export function DetailModal(props: {
       ),
     ),
   );
+}
+
+/** 把已有 cron 表达式拆成 5 个字段输入（缺段补空=通配，仅取前 5 段）。 */
+function splitCronFields(expr: string): string[] {
+  const parts = expr.trim().split(/\s+/).filter((p) => p !== '');
+  return [0, 1, 2, 3, 4].map((i) => parts[i] ?? '');
 }
