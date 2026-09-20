@@ -200,10 +200,16 @@ export function DetailModal(props: {
     {
       className: 'dsh-cb-modal-mask',
       // 点击遮罩不关闭（2026-09-19 用户要求：误触会丢编辑内容）；仅通过 关闭/取消/保存/Esc 退出
+      onMouseDown: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
+      onClick: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
     },
     createElement(
       'div',
-      { className: 'dsh-cb-modal' },
+      {
+        className: 'dsh-cb-modal',
+        onMouseDown: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
+        onClick: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
+      },
       createElement(
         'div',
         { className: 'dsh-cb-modal-head' },

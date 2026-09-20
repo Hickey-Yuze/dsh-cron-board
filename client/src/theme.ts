@@ -177,8 +177,8 @@ const CSS = `
 .dsh-cb-btn.dsh-cb-ghost:hover:not(:disabled) { background: var(--dsh-cb-hover); color: var(--dsh-cb-text); }
 
 /* ── 详情弹层 ── */
-.dsh-cb-modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.dsh-cb-modal { width: min(720px, calc(100vw - 48px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; overflow: hidden; background: var(--dsh-cb-card); border: 1px solid var(--dsh-cb-border); border-radius: var(--dsh-cb-radius-xl); box-shadow: var(--dsh-cb-shadow-xl); color: var(--dsh-cb-text); }
+.dsh-cb-modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100000; pointer-events: auto; }
+.dsh-cb-modal { width: min(720px, calc(100vw - 48px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; overflow: hidden; background: var(--dsh-cb-card); border: 1px solid var(--dsh-cb-border); border-radius: var(--dsh-cb-radius-xl); box-shadow: var(--dsh-cb-shadow-xl); color: var(--dsh-cb-text); pointer-events: auto; }
 .dsh-cb-modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--dsh-cb-border); flex-shrink: 0; }
 .dsh-cb-modal-body { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; }
 .dsh-cb-field { display: flex; flex-direction: column; gap: 6px; }
