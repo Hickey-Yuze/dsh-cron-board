@@ -62,6 +62,8 @@ interface AgentsRegistryLike {
     agentOptions?: { provider?: string; model?: string };
     setup?: (agentCtx: unknown, agent: unknown) => unknown;
   }): Promise<{ agent?: AgentLike } | undefined>;
+  /** registry 中的活 agent（仍在持会话写句柄）；复用它即延续，免 resume 撞 SessionAlreadyOwnedError。 */
+  get?(sessionId: string): AgentLike | undefined;
 }
 
 interface AgentPresetsLike {
@@ -320,30 +322,38 @@ export class TaskRunner {
       if (presetResolved) meta.agentPreset = presetResolved;
       meta.source = 'cron-board'; // 标记会话来源（闪电图标由宿主 IM 渠道自动添加，插件无法模拟）
 
-      // 会话复用（开关默认开）：直接尝试 resume，不检查 inRoster（sessions.get 可能返回 undefined 但 resume 仍能成功）
+      // 会话复用（开关默认开）：优先复用 registry 中的活 agent（其仍持会话写句柄，
+      // 直接 resume 会撞 SessionAlreadyOwnedError）；无活 agent 才走 resume（句柄已释放）
       const reuseWanted = task.reuseSession !== false && task.activeSessionId;
       this.log.info(`[cron-board] 会话复用检查：task=${task.id} reuseWanted=${reuseWanted} activeSessionId=${task.activeSessionId ?? 'none'} registry=${!!registry}`);
-      if (reuseWanted && registry?.resume && task.activeSessionId) {
-        try {
-          const handle = await registry.resume({
-            resumeSessionId: task.activeSessionId,
-            agentOptions,
-            setup: async (agentCtx: unknown) => {
-              await presets?.mount?.(agentCtx, presetResolved);
-            },
-          });
-          agent = handle?.agent ?? undefined;
-          if (agent) {
-            exec.sessionId = task.activeSessionId; // 结算/落盘对齐延续的会话
-            this.log.info(`[cron-board] 延续会话 ${task.activeSessionId}（task=${task.id}）`);
-          } else {
-            this.log.warn(`[cron-board] resume 返回 agent=undefined，改为新建（task=${task.id}）`);
+      if (reuseWanted && task.activeSessionId) {
+        const live = registry?.get?.(task.activeSessionId);
+        if (live?.session) {
+          agent = live;
+          exec.sessionId = task.activeSessionId;
+          this.log.info(`[cron-board] 复用活会话 agent ${task.activeSessionId}（task=${task.id}）`);
+        } else if (registry?.resume) {
+          try {
+            const handle = await registry.resume({
+              resumeSessionId: task.activeSessionId,
+              agentOptions,
+              setup: async (agentCtx: unknown) => {
+                await presets?.mount?.(agentCtx, presetResolved);
+              },
+            });
+            agent = handle?.agent ?? undefined;
+            if (agent) {
+              exec.sessionId = task.activeSessionId; // 结算/落盘对齐延续的会话
+              this.log.info(`[cron-board] 延续会话 ${task.activeSessionId}（task=${task.id}）`);
+            } else {
+              this.log.warn(`[cron-board] resume 返回 agent=undefined，改为新建（task=${task.id}）`);
+              exec.sessionId = newSessionId();
+            }
+          } catch (err) {
+            this.log.warn(`[cron-board] 延续会话失败，改为新建（task=${task.id}）: ${errDetail(err)}`);
+            agent = undefined;
             exec.sessionId = newSessionId();
           }
-        } catch (err) {
-          this.log.warn(`[cron-board] 延续会话失败，改为新建（task=${task.id}）: ${errDetail(err)}`);
-          agent = undefined;
-          exec.sessionId = newSessionId();
         }
       }
 
