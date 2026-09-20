@@ -528,7 +528,6 @@ export class TaskRunner {
           resultPath,
           reason: outcome.exitReason,
           content: outcome.finalText,
-          sessionId: exec.sessionId, // 推送里带会话 ID，方便跳转
         }),
       );
     }
