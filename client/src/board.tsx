@@ -41,8 +41,9 @@ function StatCard(props: {
   unit: string;
   change?: number;
   tone?: 'default' | 'ok' | 'warn' | 'err' | 'accent';
+  onClick?: () => void;
 }): ReactElement {
-  const { icon, label, count, unit, change, tone = 'default' } = props;
+  const { icon, label, count, unit, change, tone = 'default', onClick } = props;
   const changeText = change !== undefined
     ? `${change >= 0 ? '↑' : '↓'}${Math.abs(change)}%`
     : null;
@@ -50,7 +51,7 @@ function StatCard(props: {
 
   return createElement(
     'div',
-    { className: `dsh-cb-stat-card dsh-cb-stat-${tone}` },
+    { className: `dsh-cb-stat-card dsh-cb-stat-${tone}`, onClick, style: onClick ? { cursor: 'pointer' } : undefined },
     createElement('div', { className: 'dsh-cb-stat-head' },
       createElement('span', { className: 'dsh-cb-stat-label' }, label),
       createElement('div', { className: 'dsh-cb-stat-icon' }, icon),
@@ -134,6 +135,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [showArchived, setShowArchived] = useState(false);
   const [detailId, setDetailId] = useState<string | null | undefined>(undefined);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<string | null>(null); // 统计卡片筛选
 
   const load = useCallback(async () => {
     const r = await props.rpc('cron-board/state');
@@ -169,15 +171,38 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
     const last = t.executions[0];
     return last && last.status === 'success';
   }).length;
-  const overdueCount = activeTasks.filter((t) => {
-    if (!t.enabled || !t.nextRunAt) return false;
-    return new Date(t.nextRunAt).getTime() < Date.now();
-  }).length;
+  // 日志：最近 5 条执行记录
+  const recentLogs = useMemo(() => {
+    const logs: Array<{ task: TaskView; exec: Execution }> = [];
+    for (const task of activeTasks) {
+      for (const exec of task.executions) {
+        logs.push({ task, exec });
+      }
+    }
+    logs.sort((a, b) => {
+      const aTime = a.exec.endedAt ?? a.exec.startedAt;
+      const bTime = b.exec.endedAt ?? b.exec.startedAt;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+    return logs.slice(0, 5);
+  }, [activeTasks]);
+
+  // 筛选后的任务
+  const filteredTasks = useMemo(() => {
+    if (!statusFilter) return activeTasks;
+    if (statusFilter === 'todo') return activeTasks.filter((t) => !t.enabled);
+    if (statusFilter === 'running') return activeTasks.filter((t) => t.running);
+    if (statusFilter === 'completed') return activeTasks.filter((t) => {
+      const last = t.executions[0];
+      return last && last.status === 'success';
+    });
+    return activeTasks;
+  }, [activeTasks, statusFilter]);
 
   // 按项目分组
   const projectGroups = useMemo(() => {
     const groups = new Map<string, TaskView[]>();
-    for (const task of activeTasks) {
+    for (const task of filteredTasks) {
       const wsId = task.pinned.workspaceId || '';
       const ws = meta?.workspaces.find((w) => w.id === wsId);
       const name = ws?.title || t('board.other');
@@ -185,7 +210,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       groups.get(name)!.push(task);
     }
     return Array.from(groups.entries());
-  }, [activeTasks, meta]);
+  }, [filteredTasks, meta]);
 
   const toggleProject = (name: string) => {
     setExpandedProjects((prev) => {
@@ -229,11 +254,12 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       'div',
       { className: 'dsh-cb-stats-row' },
       createElement(StatCard, {
-        icon: createElement('span', null, '📋'),
+        icon: createElement('span', null, ''),
         label: t('stat.todo'),
         count: todoCount,
         unit: t('stat.tasks'),
         tone: 'default',
+        onClick: () => setStatusFilter(statusFilter === 'todo' ? null : 'todo'),
       }),
       createElement(StatCard, {
         icon: createElement('span', null, '⚡'),
@@ -241,6 +267,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         count: runningCount,
         unit: t('stat.tasks'),
         tone: 'accent',
+        onClick: () => setStatusFilter(statusFilter === 'running' ? null : 'running'),
       }),
       createElement(StatCard, {
         icon: createElement('span', null, '✓'),
@@ -248,13 +275,15 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         count: completedCount,
         unit: t('stat.tasks'),
         tone: 'ok',
+        onClick: () => setStatusFilter(statusFilter === 'completed' ? null : 'completed'),
       }),
       createElement(StatCard, {
-        icon: createElement('span', null, '⚠'),
-        label: t('stat.overdue'),
-        count: overdueCount,
-        unit: t('stat.tasks'),
-        tone: 'err',
+        icon: createElement('span', null, '📄'),
+        label: t('stat.logs'),
+        count: recentLogs.length,
+        unit: t('stat.recentLogs'),
+        tone: 'default',
+        onClick: () => setStatusFilter(null),
       }),
     ),
 

@@ -29,8 +29,9 @@ const zh: Record<string, string> = {
   'stat.todo': '今日待办',
   'stat.running': '进行中',
   'stat.completed': '已完成',
-  'stat.overdue': '逾期任务',
+  'stat.logs': '日志',
   'stat.tasks': '项任务',
+  'stat.recentLogs': '条记录',
   'stat.vsYesterday': '较昨日',
 
   'task.low': '低',
@@ -187,8 +188,9 @@ const en: Record<string, string> = {
   'stat.todo': 'To Do',
   'stat.running': 'In Progress',
   'stat.completed': 'Completed',
-  'stat.overdue': 'Overdue',
+  'stat.logs': 'Logs',
   'stat.tasks': 'tasks',
+  'stat.recentLogs': 'records',
   'stat.vsYesterday': 'vs yesterday',
 
   'task.low': 'Low',

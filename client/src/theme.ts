@@ -1,35 +1,35 @@
 /**
  * 主题令牌（--dsh-cb-* 两层令牌机制）+ 样式表注入。
- * 深色主题 + 统计概览 + 项目分组布局。
+ * 浅色主题（跟随宿主） + 统计概览 + 项目分组布局。
  */
 
 const STYLE_ID = 'dsh-cron-board-style';
 
 const CSS = `
 .dsh-cb-root, .dsh-cb-modal, .dsh-cb-icon-btn, .dsh-cb-pop {
-  --dsh-cb-bg: #0f1419;
-  --dsh-cb-bg-2: #1a1f2e;
-  --dsh-cb-bg-3: #252b3d;
-  --dsh-cb-card: #1e2433;
-  --dsh-cb-card-2: #252b3d;
-  --dsh-cb-card-3: #2d3548;
-  --dsh-cb-border: rgba(255, 255, 255, 0.08);
-  --dsh-cb-border-2: rgba(255, 255, 255, 0.16);
-  --dsh-cb-text: #e4e6eb;
-  --dsh-cb-dim: #8b949e;
-  --dsh-cb-accent: #4b6bfb;
-  --dsh-cb-accent-light: rgba(75, 107, 251, 0.3);
-  --dsh-cb-ok: #10b981;
-  --dsh-cb-ok-bg: rgba(16, 185, 129, 0.15);
-  --dsh-cb-warn: #f59e0b;
-  --dsh-cb-warn-bg: rgba(245, 158, 11, 0.15);
-  --dsh-cb-err: #ef4444;
-  --dsh-cb-err-bg: rgba(239, 68, 68, 0.15);
-  --dsh-cb-hover: rgba(255, 255, 255, 0.06);
-  --dsh-cb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --dsh-cb-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
-  --dsh-cb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --dsh-cb-shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --dsh-cb-bg: var(--dsw-alias-bg-base, #fafafa);
+  --dsh-cb-bg-2: var(--dsw-alias-bg-layer-2, #f6f6f8);
+  --dsh-cb-bg-3: var(--dsw-alias-bg-layer-3, #eef0f4);
+  --dsh-cb-card: var(--dsw-alias-bg-layer-1, #ffffff);
+  --dsh-cb-card-2: var(--dsw-alias-bg-layer-2, #f6f6f8);
+  --dsh-cb-card-3: var(--dsw-alias-bg-layer-3, #eef0f4);
+  --dsh-cb-border: var(--dsw-alias-border-l1, rgba(20, 20, 30, 0.08));
+  --dsh-cb-border-2: var(--dsw-alias-border-l2, rgba(20, 20, 30, 0.16));
+  --dsh-cb-text: var(--dsw-alias-label-primary, #1c1c22);
+  --dsh-cb-dim: var(--dsw-alias-label-secondary, #6d6d7a);
+  --dsh-cb-accent: var(--dsw-alias-brand-primary, #4b6bfb);
+  --dsh-cb-accent-light: rgba(75, 107, 251, 0.2);
+  --dsh-cb-ok: var(--dsw-alias-state-success-primary, #10b981);
+  --dsh-cb-ok-bg: rgba(16, 185, 129, 0.1);
+  --dsh-cb-warn: var(--dsw-alias-state-warn-primary, #f59e0b);
+  --dsh-cb-warn-bg: rgba(245, 158, 11, 0.1);
+  --dsh-cb-err: var(--dsw-alias-state-error-primary, #ef4444);
+  --dsh-cb-err-bg: rgba(239, 68, 68, 0.1);
+  --dsh-cb-hover: rgba(127, 127, 140, 0.08);
+  --dsh-cb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --dsh-cb-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --dsh-cb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --dsh-cb-shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.16);
   --dsh-cb-radius-sm: 8px;
   --dsh-cb-radius-md: 12px;
   --dsh-cb-radius-lg: 16px;
