@@ -91,7 +91,7 @@ const CSS = `
 
 /* ── 标题栏 ── */
 .dsh-cb-header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--dsh-cb-border); flex: none; }
-.dsh-cb-title { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+.dsh-cb-title { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.02em; white-space: nowrap; }
 .dsh-cb-sub { font-size: 12px; color: var(--dsh-cb-dim); font-weight: 500; }
 .dsh-cb-spacer { flex: 1; }
 .dsh-cb-search {

@@ -5,7 +5,7 @@
 
 const zh: Record<string, string> = {
   'panel.label': '定时任务',
-  'board.title': '定时任务看板',
+  'board.title': 'Yuze-定时任务看板',
   'board.new': '新建任务',
   'board.search': '搜索任务…',
   'board.channel': '推送',
@@ -142,7 +142,7 @@ const zh: Record<string, string> = {
   'dl.duplicateConfirm': '已存在同名任务，仍要保存这条重复的吗？',
   'dl.duplicateBlocked': '已存在同名任务，请先编辑或删除已有任务再保存',
 
-  'set.title': '定时任务看板',
+  'set.title': 'Yuze-定时任务看板',
   'set.desc': 'cron 定时 agent 会话任务 + 执行终态机器人推送。看板入口在左侧栏。',
   'set.channel': '推送通道',
   'set.defaultPush': '全局默认推送目标',
