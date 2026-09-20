@@ -108,6 +108,10 @@ const CSS = `
 
 .dsh-cb-result { margin: 0; padding: 10px 12px; background: var(--dsh-cb-card-2); border: 1px solid var(--dsh-cb-border); border-radius: 10px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
 
+/* ── Cron 五字段分列输入 ── */
+.dsh-cb-crongrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dsh-cb-croncell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
 /* ── 设置页 ── */
 .dsh-cb-set { display: flex; flex-direction: column; gap: 14px; max-width: 640px; color: var(--dsh-cb-text); font-size: 13px; }
 .dsh-cb-set h3 { font-size: 14px; margin: 0; }
