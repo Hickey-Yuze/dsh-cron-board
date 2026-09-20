@@ -104,7 +104,7 @@ export function DetailModal(props: {
     try {
       const r = await props.rpc('cron-board/task-upsert', {
         task: {
-          id: task?.id,
+          id: props.taskId ?? task?.id, // 优先用 props.taskId（编辑模式），避免快照未加载时 task 为 null
           title: title.trim(),
           prompt,
           cron: cron.trim(),
@@ -611,15 +611,15 @@ export function DetailModal(props: {
       ),
     ),
   );
-  // Portal 到 document.body：脱离看板容器，规避 transform 祖先导致的 fixed 定位错位与点击命中偏移
-  const portal = getPortal()?.createPortal;
-  if (portal && typeof document !== 'undefined') {
-    try {
-      return portal(modalTree, document.body) as ReactElement;
-    } catch {
-      /* 降级原地渲染 */
-    }
-  }
+  // v1.1.3 回退 Portal：排查「控件无法交互」问题。如确认是 transform 祖先导致定位错位，再加回 Portal
+  // const portal = getPortal()?.createPortal;
+  // if (portal && typeof document !== 'undefined') {
+  //   try {
+  //     return portal(modalTree, document.body) as ReactElement;
+  //   } catch {
+  //     /* 降级原地渲染 */
+  //   }
+  // }
   return modalTree;
 }
 
