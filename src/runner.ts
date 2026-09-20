@@ -320,15 +320,10 @@ export class TaskRunner {
       if (presetResolved) meta.agentPreset = presetResolved;
       meta.source = 'cron-board'; // 标记会话来源（闪电图标由宿主 IM 渠道自动添加，插件无法模拟）
 
-      // 会话复用（开关默认开）：活跃会话在 in-memory 名册中才 resume，否则直接新建；resume 失败落回新建
+      // 会话复用（开关默认开）：直接尝试 resume，不检查 inRoster（sessions.get 可能返回 undefined 但 resume 仍能成功）
       const reuseWanted = task.reuseSession !== false && task.activeSessionId;
-      const sessionsSvc = this.sessions();
-      const inRoster =
-        reuseWanted && task.activeSessionId
-          ? sessionsSvc?.get?.(task.activeSessionId) !== undefined
-          : false;
-      this.log.info(`[cron-board] 会话复用检查：task=${task.id} reuseWanted=${reuseWanted} activeSessionId=${task.activeSessionId ?? 'none'} inRoster=${inRoster} sessionsSvc=${!!sessionsSvc}`);
-      if (reuseWanted && inRoster && registry?.resume && task.activeSessionId) {
+      this.log.info(`[cron-board] 会话复用检查：task=${task.id} reuseWanted=${reuseWanted} activeSessionId=${task.activeSessionId ?? 'none'} registry=${!!registry}`);
+      if (reuseWanted && registry?.resume && task.activeSessionId) {
         try {
           const handle = await registry.resume({
             resumeSessionId: task.activeSessionId,
@@ -341,6 +336,9 @@ export class TaskRunner {
           if (agent) {
             exec.sessionId = task.activeSessionId; // 结算/落盘对齐延续的会话
             this.log.info(`[cron-board] 延续会话 ${task.activeSessionId}（task=${task.id}）`);
+          } else {
+            this.log.warn(`[cron-board] resume 返回 agent=undefined，改为新建（task=${task.id}）`);
+            exec.sessionId = newSessionId();
           }
         } catch (err) {
           this.log.warn(`[cron-board] 延续会话失败，改为新建（task=${task.id}）: ${errDetail(err)}`);
