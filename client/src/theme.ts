@@ -6,6 +6,11 @@
 const STYLE_ID = 'dsh-cron-board-style';
 
 const CSS = `
+/* 隐藏 sidebar.panellist 渲染的占位符（只显示 DOM 注入的按钮） */
+.dsh-cb-icon-btn[data-dsh-plugin="dsh-cron-board"] {
+  display: none !important;
+}
+
 /* 侧栏入口大按钮（参考「新会话」样式） */
 .dsh-cron-board-sidebar-btn {
   display: flex !important;

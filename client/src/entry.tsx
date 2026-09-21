@@ -56,7 +56,8 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
     btn.setAttribute(ROW_ATTR, 'true');
     btn.className = 'dsh-cron-board-sidebar-btn';
     btn.type = 'button';
-    btn.innerHTML = `<span class="dsh-cron-board-sidebar-icon"></span><span class="dsh-cron-board-sidebar-label">${t('panel.label')}</span>`;
+    // 用 SVG 图标确保显示
+    btn.innerHTML = `<svg class="dsh-cron-board-sidebar-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg><span class="dsh-cron-board-sidebar-label">${t('panel.label')}</span>`;
     btn.addEventListener('click', () => {
       ctx.layout.selectPanel(PANEL_ID);
     });
