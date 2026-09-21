@@ -11,23 +11,26 @@ const CSS = `
   display: none !important;
 }
 
-/* 侧栏入口大按钮：字体/字号/字重/高度/圆角/宽度/水平位置全部由
-   entry.tsx 在挂载时从宿主「新会话」按钮复制（内联样式），此处只留结构兜底。
-   注意：本规则不得包含 !important 的字体或盒尺寸属性，否则会压过内联对齐值。 */
+/* 侧栏入口大按钮（对齐「新会话」样式） */
 .dsh-cron-board-sidebar-btn {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 8px !important;
-  margin-top: 4px !important;
-  margin-bottom: 8px !important;
+  margin: 4px auto 8px !important;
   padding: 11px 16px !important;
   border: 1px solid rgba(20, 20, 30, 0.10) !important;
+  border-radius: 10px !important;
   background: #ffffff !important;
+  color: #1c1c22 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
   cursor: pointer !important;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease !important;
   white-space: nowrap !important;
   box-sizing: border-box !important;
+  font-family: inherit !important;
+  box-shadow: 0 1px 2px rgba(20, 20, 30, 0.04) !important;
 }
 
 .dsh-cron-board-sidebar-btn:hover {
@@ -46,6 +49,7 @@ const CSS = `
 }
 
 .dsh-cron-board-sidebar-label {
+  font-size: 14px !important;
   display: inline-block !important;
 }
 

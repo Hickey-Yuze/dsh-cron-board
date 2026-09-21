@@ -82,7 +82,7 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
 
   const entry = createEntry();
 
-  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何），样式/宽度/位置像素级对齐该按钮。 */
+  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何），宽度对齐该行。 */
   function placeEntry(r: HTMLElement): boolean {
     const button = newSessionButton(r);
     if (button === undefined) return false;
@@ -91,22 +91,9 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
       const base = row !== null && row.parentElement === r ? row : button;
       r.insertBefore(entry, base.nextElementSibling);
     }
-    // 像素级对齐：从宿主「新会话」按钮复制计算样式（字体/字号/字重/高度/圆角/阴影），
-    // 并按其几何位置设置宽度与水平偏移——与宿主按钮完全同位同宽同字。
-    const cs = getComputedStyle(button);
-    const s = entry.style;
-    s.fontFamily = cs.fontFamily;
-    s.fontSize = cs.fontSize;
-    s.fontWeight = cs.fontWeight;
-    s.letterSpacing = cs.letterSpacing;
-    s.lineHeight = cs.lineHeight;
-    s.borderRadius = cs.borderRadius;
-    s.boxShadow = cs.boxShadow;
-    s.color = cs.color;
-    const btnRect = button.getBoundingClientRect();
-    const rootRect = r.getBoundingClientRect();
-    s.width = `${Math.round(btnRect.width)}px`;
-    s.marginLeft = `${Math.round(btnRect.left - rootRect.left)}px`;
+    // 宽度对齐「新会话」行：与宿主按钮完全同宽同边距（长宽比一致）。
+    const refRow = button.closest<HTMLElement>('[class*="logoRow"]') ?? button;
+    entry.style.width = `${refRow.offsetWidth}px`;
     return true;
   }
 
