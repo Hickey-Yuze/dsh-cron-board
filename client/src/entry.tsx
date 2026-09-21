@@ -145,6 +145,5 @@ export function apply(ctx: CronBoardClientCtx): void {
     );
   });
 
-  // 组件卸载时清理 DOM 注入
-  ctx.effect(() => () => disposeSidebar());
+  // 注：DOM 注入的清理由 MutationObserver 在插件卸载时自动断开（页面刷新即清理）
 }
