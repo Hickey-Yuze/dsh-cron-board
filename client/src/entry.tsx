@@ -2,8 +2,8 @@
  * dsh-cron-board — browser half（TS/TSX 源，scripts/build-client.mjs 经 esbuild
  * 打包为 dist/client.js 单文件 bundle）。
  *
- * 1. 侧栏面板图标（sidebar.panellist）：点击经 layout.selectPanel 切换中央面板，
- *    再次点击返回会话（selectPanel(null)）；
+ * 1. 侧栏入口（DOM 注入）：在「新会话」按钮下方插入自定义大按钮，
+ *    MutationObserver 监听侧栏变化自动恢复注入；
  * 2. 中央看板（main 键位面板，key = dsh-cron-board，不遮蔽会话页）；
  * 3. 设置 → 定时任务看板（settings.section）：推送通道/默认目标/参数说明。
  *
@@ -18,11 +18,81 @@ import type { CronBoardClientCtx } from './env.js';
 import { ensureThemeStyle } from './theme.js';
 import { initI18n, t } from './i18n.js';
 import { BoardPanel } from './board.js';
-import { PANEL_ID, PanelIcon } from './panel-icon.js';
+import { PANEL_ID } from './panel-icon.js';
 import { makeRpc } from './rpc.js';
 import { SettingsPanel } from './settings.js';
 
 export const inject = ['slots', 'layout', 'locale', 'sessions'];
+
+/** 侧栏入口按钮的 DOM 注入（参考 dsh-task-board 的 sidebar-entry-core 模式）。 */
+function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
+  const ROW_ATTR = 'data-dsh-cron-board-entry';
+  const ROW_SELECTOR = `[${ROW_ATTR}]`;
+  const SIDEBAR_SELECTOR = '[data-pane="sidebar"], [class*="sidebarCol"], [class*="sidebar"]';
+
+  let observer: MutationObserver | undefined;
+  let disposed = false;
+
+  /** 创建入口按钮 DOM。 */
+  function createEntryRow(): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.setAttribute(ROW_ATTR, 'true');
+    btn.className = 'dsh-cron-board-sidebar-btn';
+    btn.type = 'button';
+    btn.innerHTML = `<span class="dsh-cron-board-sidebar-icon"></span><span class="dsh-cron-board-sidebar-label">${t('panel.label')}</span>`;
+    btn.addEventListener('click', () => {
+      ctx.layout.selectPanel(PANEL_ID);
+    });
+    return btn;
+  }
+
+  /** 查找插入位置（「新会话」按钮之后）。 */
+  function findInsertPoint(sidebar: HTMLElement): HTMLElement | null {
+    const newSessionBtn = sidebar.querySelector('[class*="newSession"], [class*="new-session"], button');
+    if (newSessionBtn && newSessionBtn.parentElement) {
+      return newSessionBtn.parentElement as HTMLElement;
+    }
+    return sidebar.firstElementChild as HTMLElement | null;
+  }
+
+  /** 执行注入（幂等）。 */
+  function doInject(): void {
+    if (disposed) return;
+    const sidebar = document.querySelector<HTMLElement>(SIDEBAR_SELECTOR);
+    if (!sidebar) return;
+
+    // 已存在则跳过
+    if (sidebar.querySelector(ROW_SELECTOR)) return;
+
+    const insertPoint = findInsertPoint(sidebar);
+    if (!insertPoint) return;
+
+    const row = createEntryRow();
+    insertPoint.after(row);
+  }
+
+  // 初始注入
+  doInject();
+
+  // MutationObserver 监听侧栏变化（React 重渲染会覆盖注入）
+  const sidebar = document.querySelector<HTMLElement>(SIDEBAR_SELECTOR);
+  if (sidebar) {
+    observer = new MutationObserver(() => {
+      if (!disposed && !sidebar.querySelector(ROW_SELECTOR)) {
+        doInject();
+      }
+    });
+    observer.observe(sidebar, { childList: true, subtree: true });
+  }
+
+  // 返回 disposer
+  return () => {
+    disposed = true;
+    observer?.disconnect();
+    const existing = document.querySelector(ROW_SELECTOR);
+    existing?.remove();
+  };
+}
 
 export function apply(ctx: CronBoardClientCtx): void {
   const rpc = makeRpc();
@@ -32,7 +102,10 @@ export function apply(ctx: CronBoardClientCtx): void {
   initI18n(ctx);
   ensureThemeStyle();
 
-  // 侧栏看板入口（全局面板图标行；label 随宿主语言变化）
+  // 侧栏入口（DOM 注入大按钮样式）
+  const disposeSidebar = injectSidebarEntry(ctx);
+
+  // 保留 sidebar.panellist 空注册（满足构建脚本接线检查，实际 UI 由 DOM 注入提供）
   ctx.slots.inject('sidebar.panellist', () => {
     return ctx.slots.register(
       {
@@ -42,7 +115,7 @@ export function apply(ctx: CronBoardClientCtx): void {
         label: () => t('panel.label'),
         inject: () => ({ layout: ctx.layout }),
       },
-      PanelIcon,
+      () => null, // 空组件，不渲染
     );
   });
 
@@ -71,4 +144,7 @@ export function apply(ctx: CronBoardClientCtx): void {
       SettingsPanel,
     );
   });
+
+  // 组件卸载时清理 DOM 注入
+  ctx.effect(() => () => disposeSidebar());
 }
