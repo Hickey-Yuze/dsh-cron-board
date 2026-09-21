@@ -2,8 +2,9 @@
  * dsh-cron-board — browser half（TS/TSX 源，scripts/build-client.mjs 经 esbuild
  * 打包为 dist/client.js 单文件 bundle）。
  *
- * 1. 侧栏入口（DOM 注入）：在「新会话」按钮下方插入自定义大按钮，
- *    MutationObserver 监听侧栏变化自动恢复注入；
+ * 1. 侧栏入口（DOM 注入）：照 dsh-task-board 验证过的 sidebar-entry-core 模式——
+ *    root 取 logoRow 的父元素，入口插在「新会话」行之后；root + body 双
+ *    MutationObserver 自愈（React 重渲染同帧重插，整树重建后重查询）。
  * 2. 中央看板（main 键位面板，key = dsh-cron-board，不遮蔽会话页）；
  * 3. 设置 → 定时任务看板（settings.section）：推送通道/默认目标/参数说明。
  *
@@ -24,110 +25,116 @@ import { SettingsPanel } from './settings.js';
 
 export const inject = ['slots', 'layout', 'locale', 'sessions'];
 
-/** 侧栏入口按钮的 DOM 注入（参考 dsh-task-board 的 sidebar-entry-core 模式）。 */
+/** 日历时钟图标（与原 PanelIcon 同款）。 */
+const ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/><circle cx="17" cy="17" r="5"/><path d="M17 15v2l1.5 1.5"/></svg>';
+
+/**
+ * 侧栏入口按钮的 DOM 注入（照 dsh-task-board sidebar-entry-core 验证过的结构）：
+ * root = logoRow 的父元素；入口插在「新会话」行（logoRow）之后。
+ */
 function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
   const ROW_ATTR = 'data-dsh-cron-board-entry';
   const ROW_SELECTOR = `[${ROW_ATTR}]`;
-  // 更宽松的侧栏选择器
-  const SIDEBAR_SELECTORS = [
-    '[data-pane="sidebar"]',
-    '[class*="sidebarCol"]',
-    '[class*="sidebar"]',
-    'nav[class*="sidebar"]',
-    'aside[class*="sidebar"]',
-  ];
 
-  let observer: MutationObserver | undefined;
   let disposed = false;
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let root: HTMLElement | undefined;
+  let placed = false;
+  let rootObserver: MutationObserver | undefined;
+  let bodyObserver: MutationObserver | undefined;
 
-  /** 查找侧栏容器。 */
-  function findSidebar(): HTMLElement | null {
-    for (const selector of SIDEBAR_SELECTORS) {
-      const el = document.querySelector<HTMLElement>(selector);
-      if (el) return el;
-    }
-    return null;
+  /** 侧栏 UI root：column > wrapper > root(logoRow 所有者)。 */
+  function sidebarRoot(): HTMLElement | undefined {
+    const column = document.querySelector<HTMLElement>('[data-pane="sidebar"], [class*="sidebarCol"]');
+    if (column === null) return undefined;
+    const logoOwner = column.querySelector<HTMLElement>('[class*="logoRow"]')?.parentElement;
+    return logoOwner ?? (column.firstElementChild as HTMLElement | undefined);
   }
 
-  /** 创建入口按钮 DOM。 */
-  function createEntryRow(): HTMLButtonElement {
+  /** 「新会话」按钮：当前 shell 嵌在 logo 行里，旧 shell 是 root 直接子级。 */
+  function newSessionButton(r: HTMLElement): HTMLButtonElement | undefined {
+    const nested = r.querySelector<HTMLButtonElement>('button[class*="newSession"]');
+    if (nested != null) return nested;
+    for (const child of r.children) {
+      if (child.tagName === 'BUTTON') return child as HTMLButtonElement;
+    }
+    return undefined;
+  }
+
+  /** 入口按钮（detach 状态创建一次；shell 重建时整体重插）。 */
+  function createEntry(): HTMLButtonElement {
     const btn = document.createElement('button');
-    btn.setAttribute(ROW_ATTR, 'true');
-    btn.className = 'dsh-cron-board-sidebar-btn';
     btn.type = 'button';
-    // 用 SVG 图标确保显示
-    btn.innerHTML = `<svg class="dsh-cron-board-sidebar-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg><span class="dsh-cron-board-sidebar-label">${t('panel.label')}</span>`;
+    btn.setAttribute(ROW_ATTR, '');
+    btn.className = 'dsh-cron-board-sidebar-btn';
+    btn.setAttribute('aria-label', t('panel.label'));
+    btn.title = t('panel.label');
+    btn.innerHTML = `<span class="dsh-cron-board-sidebar-icon">${ICON_SVG}</span><span class="dsh-cron-board-sidebar-label"></span>`;
+    const label = btn.querySelector<HTMLElement>('.dsh-cron-board-sidebar-label');
+    if (label) label.textContent = t('panel.label');
     btn.addEventListener('click', () => {
       ctx.layout.selectPanel(PANEL_ID);
     });
     return btn;
   }
 
-  /** 查找插入位置（「新会话」按钮之后）。 */
-  function findInsertPoint(sidebar: HTMLElement): HTMLElement | null {
-    // 尝试多种选择器找「新会话」按钮
-    const candidates = [
-      sidebar.querySelector('[class*="newSession"]'),
-      sidebar.querySelector('[class*="new-session"]'),
-      sidebar.querySelector('button'),
-    ];
-    for (const el of candidates) {
-      if (el && el.parentElement) {
-        return el.parentElement as HTMLElement;
-      }
+  const entry = createEntry();
+
+  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何）。 */
+  function placeEntry(r: HTMLElement): boolean {
+    const button = newSessionButton(r);
+    if (button === undefined) return false;
+    if (entry.parentElement !== r) {
+      const row = button.closest<HTMLElement>('[class*="logoRow"]');
+      const base = row !== null && row.parentElement === r ? row : button;
+      r.insertBefore(entry, base.nextElementSibling);
     }
-    return sidebar.firstElementChild as HTMLElement | null;
+    return true;
   }
 
-  /** 执行注入（幂等 + 重试）。 */
-  function doInject(): void {
+  function tryPlace(): void {
     if (disposed) return;
-    const sidebar = findSidebar();
-    if (!sidebar) {
-      // 侧栏还没渲染，延迟重试
-      retryTimer = setTimeout(doInject, 500);
-      return;
+    if (root !== undefined && !root.isConnected) {
+      // shell 重建了整个侧栏 pane：root observer 随旧树消亡，从头重查。
+      rootObserver?.disconnect();
+      rootObserver = undefined;
+      root = undefined;
+      placed = false;
     }
-
-    // 已存在则跳过
-    if (sidebar.querySelector(ROW_SELECTOR)) return;
-
-    const insertPoint = findInsertPoint(sidebar);
-    if (!insertPoint) {
-      retryTimer = setTimeout(doInject, 500);
-      return;
+    if (placed) {
+      if (document.body.contains(entry)) return; // 仍挂着：廉价短路
+      rootObserver?.disconnect();
+      rootObserver = undefined;
+      root = undefined;
+      placed = false;
     }
-
-    const row = createEntryRow();
-    insertPoint.after(row);
+    root ??= sidebarRoot();
+    if (root === undefined) return;
+    placed = placeEntry(root);
+    if (placed) {
+      rootObserver ??= new MutationObserver(() => {
+        if (root === undefined || !root.isConnected) {
+          placed = false;
+          tryPlace();
+          return;
+        }
+        if (!root.contains(entry)) placed = placeEntry(root);
+      });
+      rootObserver.observe(root, { childList: true, subtree: true });
+    }
   }
 
-  // 初始注入（延迟确保侧栏已渲染）
-  retryTimer = setTimeout(doInject, 300);
+  // body 级 watcher：整树重建的兜底（root observer 随旧树消亡时只有它能发现新 pane）。
+  bodyObserver = new MutationObserver(() => tryPlace());
+  bodyObserver.observe(document.body, { childList: true, subtree: true });
+  // 首次尝试（shell 可能已挂载；没挂载由 body watcher 兜底）。
+  tryPlace();
 
-  // MutationObserver 监听侧栏变化（React 重渲染会覆盖注入）
-  const checkAndObserve = () => {
-    const sidebar = findSidebar();
-    if (!sidebar) return;
-    observer = new MutationObserver(() => {
-      if (!disposed && !sidebar.querySelector(ROW_SELECTOR)) {
-        doInject();
-      }
-    });
-    observer.observe(sidebar, { childList: true, subtree: true });
-  };
-
-  // 延迟启动 observer
-  setTimeout(checkAndObserve, 1000);
-
-  // 返回 disposer
   return () => {
     disposed = true;
-    if (retryTimer) clearTimeout(retryTimer);
-    observer?.disconnect();
-    const existing = document.querySelector(ROW_SELECTOR);
-    existing?.remove();
+    rootObserver?.disconnect();
+    bodyObserver?.disconnect();
+    entry.remove();
   };
 }
 
@@ -182,5 +189,6 @@ export function apply(ctx: CronBoardClientCtx): void {
     );
   });
 
-  // 注：DOM 注入的清理由 MutationObserver 在插件卸载时自动断开（页面刷新即清理）
+  // 注：DOM 注入清理由 disposeSidebar 持有（当前生命周期=页面级，刷新即重置）。
+  void disposeSidebar;
 }
