@@ -17,8 +17,7 @@ const CSS = `
   align-items: center !important;
   justify-content: center !important;
   gap: 8px !important;
-  width: calc(100% - 24px) !important;
-  margin: 4px 12px 8px !important;
+  margin: 4px auto 8px !important;
   padding: 11px 16px !important;
   border: 1px solid rgba(20, 20, 30, 0.10) !important;
   border-radius: 10px !important;

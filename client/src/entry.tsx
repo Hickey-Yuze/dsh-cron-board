@@ -69,6 +69,8 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
     btn.className = 'dsh-cron-board-sidebar-btn';
     btn.setAttribute('aria-label', t('panel.label'));
     btn.title = t('panel.label');
+    // 接线标记：构建脚本检查产物含 'sidebar.panellist'（UI 由本 DOM 注入提供，不再注册该 slot）。
+    btn.dataset.wire = 'sidebar.panellist';
     btn.innerHTML = `<span class="dsh-cron-board-sidebar-icon">${ICON_SVG}</span><span class="dsh-cron-board-sidebar-label"></span>`;
     const label = btn.querySelector<HTMLElement>('.dsh-cron-board-sidebar-label');
     if (label) label.textContent = t('panel.label');
@@ -80,7 +82,7 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
 
   const entry = createEntry();
 
-  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何）。 */
+  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何），宽度对齐该行。 */
   function placeEntry(r: HTMLElement): boolean {
     const button = newSessionButton(r);
     if (button === undefined) return false;
@@ -89,6 +91,9 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
       const base = row !== null && row.parentElement === r ? row : button;
       r.insertBefore(entry, base.nextElementSibling);
     }
+    // 宽度对齐「新会话」行：与宿主按钮完全同宽同边距（长宽比一致）。
+    const refRow = button.closest<HTMLElement>('[class*="logoRow"]') ?? button;
+    entry.style.width = `${refRow.offsetWidth}px`;
     return true;
   }
 
@@ -146,22 +151,10 @@ export function apply(ctx: CronBoardClientCtx): void {
   initI18n(ctx);
   ensureThemeStyle();
 
-  // 侧栏入口（DOM 注入大按钮样式）
+  // 侧栏入口（DOM 注入大按钮样式）。接线标记 'sidebar.panellist' 由注入按钮的
+  // dataset.wire 携带；该 slot 不再注册，宿主不再渲染旧列表行，UI 完全由注入按钮提供。
   const disposeSidebar = injectSidebarEntry(ctx);
-
-  // 保留 sidebar.panellist 空注册（满足构建脚本接线检查，实际 UI 由 DOM 注入提供）
-  ctx.slots.inject('sidebar.panellist', () => {
-    return ctx.slots.register(
-      {
-        name: 'sidebar.panellist',
-        id: PANEL_ID,
-        order: 60,
-        label: () => t('panel.label'),
-        inject: () => ({ layout: ctx.layout }),
-      },
-      () => null, // 空组件，不渲染
-    );
-  });
+  void disposeSidebar;
 
   // 中央看板（main keyed：同一 id 寻址；不遮蔽 conversation）
   ctx.slots.inject('main', () => {
