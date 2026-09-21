@@ -8,40 +8,44 @@ const STYLE_ID = 'dsh-cron-board-style';
 const CSS = `
 /* 侧栏入口大按钮（参考「新会话」样式） */
 .dsh-cron-board-sidebar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 16px;
-  margin: 8px 0;
-  border: 1px solid var(--dsh-cb-border);
-  border-radius: 8px;
-  background: var(--dsh-cb-card);
-  color: var(--dsh-cb-text);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  padding: 10px 16px !important;
+  margin: 8px 0 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+  font-family: inherit !important;
 }
 
 .dsh-cron-board-sidebar-btn:hover {
-  background: var(--dsh-cb-card-2);
-  border-color: var(--dsh-cb-accent);
+  background: #f9fafb !important;
+  border-color: #4b6bfb !important;
 }
 
 .dsh-cron-board-sidebar-btn:active {
-  transform: scale(0.98);
+  transform: scale(0.98) !important;
 }
 
 .dsh-cron-board-sidebar-icon {
-  font-size: 16px;
-  line-height: 1;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  display: inline-block !important;
 }
 
 .dsh-cron-board-sidebar-label {
-  font-size: 14px;
+  font-size: 14px !important;
+  display: inline-block !important;
 }
 
 .dsh-cb-root, .dsh-cb-modal, .dsh-cb-icon-btn, .dsh-cb-pop {

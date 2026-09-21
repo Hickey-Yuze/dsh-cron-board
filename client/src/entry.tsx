@@ -28,10 +28,27 @@ export const inject = ['slots', 'layout', 'locale', 'sessions'];
 function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
   const ROW_ATTR = 'data-dsh-cron-board-entry';
   const ROW_SELECTOR = `[${ROW_ATTR}]`;
-  const SIDEBAR_SELECTOR = '[data-pane="sidebar"], [class*="sidebarCol"], [class*="sidebar"]';
+  // 更宽松的侧栏选择器
+  const SIDEBAR_SELECTORS = [
+    '[data-pane="sidebar"]',
+    '[class*="sidebarCol"]',
+    '[class*="sidebar"]',
+    'nav[class*="sidebar"]',
+    'aside[class*="sidebar"]',
+  ];
 
   let observer: MutationObserver | undefined;
   let disposed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** 查找侧栏容器。 */
+  function findSidebar(): HTMLElement | null {
+    for (const selector of SIDEBAR_SELECTORS) {
+      const el = document.querySelector<HTMLElement>(selector);
+      if (el) return el;
+    }
+    return null;
+  }
 
   /** 创建入口按钮 DOM。 */
   function createEntryRow(): HTMLButtonElement {
@@ -48,46 +65,65 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
 
   /** 查找插入位置（「新会话」按钮之后）。 */
   function findInsertPoint(sidebar: HTMLElement): HTMLElement | null {
-    const newSessionBtn = sidebar.querySelector('[class*="newSession"], [class*="new-session"], button');
-    if (newSessionBtn && newSessionBtn.parentElement) {
-      return newSessionBtn.parentElement as HTMLElement;
+    // 尝试多种选择器找「新会话」按钮
+    const candidates = [
+      sidebar.querySelector('[class*="newSession"]'),
+      sidebar.querySelector('[class*="new-session"]'),
+      sidebar.querySelector('button'),
+    ];
+    for (const el of candidates) {
+      if (el && el.parentElement) {
+        return el.parentElement as HTMLElement;
+      }
     }
     return sidebar.firstElementChild as HTMLElement | null;
   }
 
-  /** 执行注入（幂等）。 */
+  /** 执行注入（幂等 + 重试）。 */
   function doInject(): void {
     if (disposed) return;
-    const sidebar = document.querySelector<HTMLElement>(SIDEBAR_SELECTOR);
-    if (!sidebar) return;
+    const sidebar = findSidebar();
+    if (!sidebar) {
+      // 侧栏还没渲染，延迟重试
+      retryTimer = setTimeout(doInject, 500);
+      return;
+    }
 
     // 已存在则跳过
     if (sidebar.querySelector(ROW_SELECTOR)) return;
 
     const insertPoint = findInsertPoint(sidebar);
-    if (!insertPoint) return;
+    if (!insertPoint) {
+      retryTimer = setTimeout(doInject, 500);
+      return;
+    }
 
     const row = createEntryRow();
     insertPoint.after(row);
   }
 
-  // 初始注入
-  doInject();
+  // 初始注入（延迟确保侧栏已渲染）
+  retryTimer = setTimeout(doInject, 300);
 
   // MutationObserver 监听侧栏变化（React 重渲染会覆盖注入）
-  const sidebar = document.querySelector<HTMLElement>(SIDEBAR_SELECTOR);
-  if (sidebar) {
+  const checkAndObserve = () => {
+    const sidebar = findSidebar();
+    if (!sidebar) return;
     observer = new MutationObserver(() => {
       if (!disposed && !sidebar.querySelector(ROW_SELECTOR)) {
         doInject();
       }
     });
     observer.observe(sidebar, { childList: true, subtree: true });
-  }
+  };
+
+  // 延迟启动 observer
+  setTimeout(checkAndObserve, 1000);
 
   // 返回 disposer
   return () => {
     disposed = true;
+    if (retryTimer) clearTimeout(retryTimer);
     observer?.disconnect();
     const existing = document.querySelector(ROW_SELECTOR);
     existing?.remove();
