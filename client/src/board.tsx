@@ -315,7 +315,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       pushChannelBadge,
       createElement('div', { className: 'dsh-cb-spacer' }),
       createElement(TextInput, { value: search, onChange: setSearch, placeholder: t('board.search') }),
-      createElement(Btn, { kind: 'primary', onClick: () => setDetailId(null) }, t('board.new')),
+      createElement(Btn, { kind: 'primary', onClick: () => setDetailId(null) }, '⊕ ' + t('board.new')),
     ),
 
     // 错误提示

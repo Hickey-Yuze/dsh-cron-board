@@ -6,6 +6,44 @@
 const STYLE_ID = 'dsh-cron-board-style';
 
 const CSS = `
+/* 侧栏入口大按钮（参考「新会话」样式） */
+.dsh-cron-board-sidebar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  margin: 8px 0;
+  border: 1px solid var(--dsh-cb-border);
+  border-radius: 8px;
+  background: var(--dsh-cb-card);
+  color: var(--dsh-cb-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.dsh-cron-board-sidebar-btn:hover {
+  background: var(--dsh-cb-card-2);
+  border-color: var(--dsh-cb-accent);
+}
+
+.dsh-cron-board-sidebar-btn:active {
+  transform: scale(0.98);
+}
+
+.dsh-cron-board-sidebar-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.dsh-cron-board-sidebar-label {
+  font-size: 14px;
+}
+
 .dsh-cb-root, .dsh-cb-modal, .dsh-cb-icon-btn, .dsh-cb-pop {
   --dsh-cb-bg: var(--dsw-alias-bg-base, #fafafa);
   --dsh-cb-bg-2: var(--dsw-alias-bg-layer-2, #f6f6f8);
@@ -185,8 +223,8 @@ const CSS = `
 .dsh-cb-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 13px; border-radius: var(--dsh-cb-radius-sm); border: 1px solid var(--dsh-cb-border-2); background: var(--dsh-cb-card); color: var(--dsh-cb-text); cursor: pointer; font: inherit; font-weight: 500; transition: all 0.15s ease; white-space: nowrap; }
 .dsh-cb-btn:hover:not(:disabled):not(.dsh-cb-primary):not(.dsh-cb-danger):not(.dsh-cb-ghost) { background: var(--dsh-cb-hover); }
 .dsh-cb-btn:disabled { opacity: .4; cursor: not-allowed; }
-.dsh-cb-btn.dsh-cb-primary { background: var(--dsh-cb-accent); border-color: var(--dsh-cb-accent); color: #fff; box-shadow: var(--dsh-cb-shadow-sm); }
-.dsh-cb-btn.dsh-cb-primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--dsh-cb-accent); }
+.dsh-cb-btn.dsh-cb-primary { background: var(--dsh-cb-card); border-color: var(--dsh-cb-border); color: var(--dsh-cb-text); box-shadow: var(--dsh-cb-shadow-sm); border-radius: 999px; padding: 10px 20px; font-size: 14px; }
+.dsh-cb-btn.dsh-cb-primary:hover:not(:disabled) { background: var(--dsh-cb-hover); border-color: var(--dsh-cb-accent); }
 .dsh-cb-btn.dsh-cb-danger { color: var(--dsh-cb-err); border-color: var(--dsh-cb-err); }
 .dsh-cb-btn.dsh-cb-danger:hover:not(:disabled) { background: var(--dsh-cb-err-bg); }
 .dsh-cb-btn.dsh-cb-ghost { border-color: transparent; background: transparent; color: var(--dsh-cb-dim); }
