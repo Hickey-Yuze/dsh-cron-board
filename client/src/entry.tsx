@@ -37,6 +37,12 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
   const ROW_ATTR = 'data-dsh-cron-board-entry';
   const ROW_SELECTOR = `[${ROW_ATTR}]`;
 
+  // DOM 级幂等（对齐 dsh-task-board）：重复 apply / HMR 重注入 / 残留模块再次
+  // 挂载时，绝不创建第二个入口——已存在的按钮继续工作，整页刷新才是终极重置。
+  if (typeof document !== 'undefined' && document.querySelector(ROW_SELECTOR) !== null) {
+    return () => {};
+  }
+
   let disposed = false;
   let root: HTMLElement | undefined;
   let placed = false;
