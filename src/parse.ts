@@ -11,6 +11,9 @@ interface StreamChunkLike {
   type: string;
   block?: { type?: string; text?: string };
   text?: string;
+  index?: number;
+  blockType?: string;
+  reason?: { kind: string; failure?: { message?: string; code?: string } };
 }
 
 interface LlmStreamLike {
@@ -84,21 +87,38 @@ export function createAiParser(ctx: Context, log: { warn(m: string): void }): Ai
         provider: selection.provider,
         model: selection.model,
         messages: [message],
-        maxTokens: 2048,
+        maxTokens: 4096,
         temperature: 0.2,
         signal,
       });
       let output = '';
+      let finishKind = '';
+      let finishDetail = '';
       for await (const chunk of stream) {
         if (signal.aborted) throw new Error('aborted');
         if (chunk.type === 'block-end' && chunk.block?.type === 'text' && typeof chunk.block.text === 'string') {
           output += chunk.block.text;
+        } else if (chunk.type === 'finish' && chunk.reason) {
+          // dsh-llm 协议：finish 是终态。error/aborted 携带 failure（此前被忽略，
+          // 上游失败会因输出为空被误报成「格式异常」），max-tokens 意味着输出可能截断。
+          finishKind = chunk.reason.kind;
+          if (chunk.reason.failure?.message) finishDetail = chunk.reason.failure.message;
+          if (finishKind === 'error') {
+            throw new Error(`模型调用失败: ${(finishDetail || '未知错误').slice(0, 160)}`);
+          }
+          if (finishKind === 'aborted') throw new Error('解析已取消或超时');
         }
       }
       const obj = extractJsonObject(output);
       if (!obj) {
-        log.warn(`[cron-board] AI 解析输出无法解析为 JSON: ${output.slice(0, 200)}`);
-        throw new Error('解析结果格式异常，请重试或手动填写');
+        const hint =
+          finishKind === 'max-tokens'
+            ? '输出被截断'
+            : output.trim() === ''
+              ? '模型无文本输出'
+              : `输出开头: ${output.trim().slice(0, 60)}`;
+        log.warn(`[cron-board] AI 解析输出无法解析为 JSON（finish=${finishKind || 'none'}）: ${output.slice(0, 200)}`);
+        throw new Error(`解析结果格式异常（${hint}），请重试或手动填写`);
       }
       const title = typeof obj.title === 'string' ? obj.title.trim().slice(0, 120) : undefined;
       const prompt = typeof obj.prompt === 'string' ? obj.prompt.trim().slice(0, 32768) : undefined;
