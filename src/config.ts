@@ -24,7 +24,7 @@ export const cronBoardSchema = Schema.intersect([
     schedulerTickMs: Schema.number().default(30000).description('调度扫描间隔（毫秒）'),
     runTimeoutMin: Schema.number().default(60).description('单次执行超时（分钟）'),
     resultsKeepPerTask: Schema.number().default(20).description('每任务结果文件保留数'),
-    executionsKeepPerTask: Schema.number().default(20).description('每任务执行记录保留数'),
+    executionsKeepPerTask: Schema.number().default(50).description('每任务执行记录保留数'),
     defaultPermission: Schema.union(['read-only', 'workspace-write', 'danger-full-access']).default('read-only').description('默认权限档（确认门基准）'),
   }).description('调度与保留'),
   Schema.object({
