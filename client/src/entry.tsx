@@ -88,7 +88,17 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
 
   const entry = createEntry();
 
-  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何），宽度对齐该行。 */
+  let resizeObserver: ResizeObserver | undefined;
+
+  /** 与宿主「新会话」按钮同步几何：同宽 + 同水平位置（侧栏拖动时跟随）。 */
+  function syncGeometry(r: HTMLElement, button: HTMLButtonElement): void {
+    const btnRect = button.getBoundingClientRect();
+    const rootRect = r.getBoundingClientRect();
+    entry.style.width = `${Math.round(btnRect.width)}px`;
+    entry.style.marginLeft = `${Math.round(btnRect.left - rootRect.left)}px`;
+  }
+
+  /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何），并跟随其尺寸变化。 */
   function placeEntry(r: HTMLElement): boolean {
     const button = newSessionButton(r);
     if (button === undefined) return false;
@@ -97,9 +107,14 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
       const base = row !== null && row.parentElement === r ? row : button;
       r.insertBefore(entry, base.nextElementSibling);
     }
-    // 宽度对齐「新会话」行：与宿主按钮完全同宽同边距（长宽比一致）。
-    const refRow = button.closest<HTMLElement>('[class*="logoRow"]') ?? button;
-    entry.style.width = `${refRow.offsetWidth}px`;
+    // 首次同步 + ResizeObserver 跟随：拖动侧栏宽度时宿主按钮尺寸变化，
+    // 回调里实时重新对齐（按钮失连由整树重建路径兜底重挂）。
+    syncGeometry(r, button);
+    resizeObserver?.disconnect();
+    resizeObserver = new ResizeObserver(() => {
+      if (!disposed && button.isConnected) syncGeometry(r, button);
+    });
+    resizeObserver.observe(button);
     return true;
   }
 
@@ -145,6 +160,7 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
     disposed = true;
     rootObserver?.disconnect();
     bodyObserver?.disconnect();
+    resizeObserver?.disconnect();
     entry.remove();
   };
 }
