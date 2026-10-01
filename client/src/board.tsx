@@ -91,10 +91,11 @@ function ProjectGroup(props: {
   onTaskClick: (task: TaskView) => void;
   onRun: (task: TaskView) => void;
   onTestPush: (task: TaskView) => void;
+  onDuplicate: (task: TaskView) => void;
   onDelete: (task: TaskView) => void;
   onToggleEnabled: (task: TaskView) => void;
 }): ReactElement {
-  const { name, color, count, tasks, expanded, onToggle, onTaskClick, onRun, onTestPush, onDelete, onToggleEnabled } = props;
+  const { name, color, count, tasks, expanded, onToggle, onTaskClick, onRun, onTestPush, onDuplicate, onDelete, onToggleEnabled } = props;
 
   return createElement(
     'div',
@@ -134,6 +135,7 @@ function ProjectGroup(props: {
                     createElement('span', { className: 'dsh-cb-task-actions' },
                       rowAction(t('act.runShort'), () => onRun(task)),
                       rowAction(t('act.pushShort'), () => onTestPush(task)),
+                      rowAction(t('act.duplicate'), () => onDuplicate(task)),
                       rowAction(task.enabled === false ? t('act.resume') : t('act.pause'), () => onToggleEnabled(task)),
                       rowAction(t('act.delete'), () => onDelete(task), true),
                     ),
@@ -155,6 +157,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [detailId, setDetailId] = useState<string | null | undefined>(undefined);
+  const [cloneFrom, setCloneFrom] = useState<TaskView | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<string | null>(null); // 统计卡片筛选：todo/running/completed/logs
 
@@ -384,6 +387,10 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
               onTaskClick: (task) => setDetailId(task.id),
               onRun: (task) => void props.rpc('cron-board/task-run', { id: task.id }).then(() => void load()),
               onTestPush: (task) => void props.rpc('cron-board/push-test', { id: task.id }).then(() => void load()),
+              onDuplicate: (task) => {
+                setCloneFrom(task);
+                setDetailId(null);
+              },
               onDelete: (task) => void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load()),
               onToggleEnabled: (task) => void props.rpc('cron-board/task-toggle', { id: task.id, enabled: task.enabled === false }).then(() => void load()),
             });
@@ -440,7 +447,11 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
           meta,
           sessions: props.sessions,
           taskId: detailId,
-          onClose: () => setDetailId(undefined),
+          cloneFrom,
+          onClose: () => {
+            setDetailId(undefined);
+            setCloneFrom(null);
+          },
           onChanged: () => void load(),
         })
       : null,
