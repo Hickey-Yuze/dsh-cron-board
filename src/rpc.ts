@@ -48,7 +48,7 @@ interface WebServerLike {
 }
 
 const API_PREFIX = '/api/cron-board';
-const BODY_MAX = 1024 * 1024;
+const BODY_MAX = 8 * 1024 * 1024;
 
 export interface RpcDeps {
   ledger: LedgerStore;
