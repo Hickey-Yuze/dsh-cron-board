@@ -238,6 +238,49 @@ async function main(): Promise<void> {
     /targetId/,
     '非法 targetId 拒绝',
   );
+  // 任务图片（2026-09-27）：校验 + 透传语义
+  const withImages = normalizeDraft({
+    title: 'x',
+    prompt: 'p',
+    cron: '* * * * *',
+    enabled: false,
+    images: [{ name: 'a.png', mediaType: 'image/png', data: 'aGVsbG8=' }],
+  });
+  eq(withImages.images?.length, 1, 'images 透传');
+  eq(withImages.images?.[0]?.mediaType, 'image/png', 'mediaType 透传');
+  const noImages = normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false });
+  eq(noImages.images, undefined, '无 images = undefined（保持不变）');
+  const clearImages = normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false, images: [] });
+  eq(clearImages.images?.length, 0, '空数组 = 清空');
+  assert.throws(() => normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false, images: 'x' }), /数组/, 'images 非数组拒绝');
+  assert.throws(
+    () =>
+      normalizeDraft({
+        title: 'x',
+        prompt: 'p',
+        cron: '* * * * *',
+        enabled: false,
+        images: [
+          { mediaType: 'image/png', data: 'aGk=' },
+          { mediaType: 'image/png', data: 'aGk=' },
+          { mediaType: 'image/png', data: 'aGk=' },
+          { mediaType: 'image/png', data: 'aGk=' },
+          { mediaType: 'image/png', data: 'aGk=' },
+        ],
+      }),
+    /最多 4 张/,
+    '超过 4 张拒绝',
+  );
+  assert.throws(
+    () => normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false, images: [{ mediaType: 'application/pdf', data: 'aGk=' }] }),
+    /不支持的图片格式/,
+    '非法 mediaType 拒绝',
+  );
+  assert.throws(
+    () => normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false, images: [{ mediaType: 'image/png', data: 'not base64!!' }] }),
+    /base64/,
+    '非法 base64 拒绝',
+  );
   eq(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false }).pinned?.permission, undefined, '缺省权限 = 跟随默认');
   const withTags = normalizeDraft({
     title: 'x',
