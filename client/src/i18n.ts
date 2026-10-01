@@ -41,6 +41,8 @@ const zh: Record<string, string> = {
   'col.running': '运行中',
   'col.recent': '最近执行',
 
+  'st.enabledOn': '已启用',
+  'st.enabledOff': '已停用',
   'st.running': '运行中',
   'st.success': '成功',
   'st.failed': '失败',
@@ -209,6 +211,8 @@ const en: Record<string, string> = {
   'col.running': 'Running',
   'col.recent': 'Recent runs',
 
+  'st.enabledOn': 'Enabled',
+  'st.enabledOff': 'Disabled',
   'st.running': 'Running',
   'st.success': 'Success',
   'st.failed': 'Failed',
