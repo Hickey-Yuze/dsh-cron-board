@@ -47,6 +47,7 @@ const zh: Record<string, string> = {
   'st.timeout': '超时',
   'st.canceled': '已取消',
   'st.pending': '待执行',
+  'st.paused': '已暂停',
 
   'push.sent': '已送达',
   'push.failed': '未送达',
@@ -68,6 +69,8 @@ const zh: Record<string, string> = {
   'act.run': '立即执行',
   'act.runShort': '执行',
   'act.pushShort': '推送',
+  'act.pause': '暂停',
+  'act.resume': '恢复',
   'act.save': '保存',
   'act.cancel': '取消',
   'act.delete': '删除',
@@ -208,6 +211,7 @@ const en: Record<string, string> = {
   'st.timeout': 'Timeout',
   'st.canceled': 'Canceled',
   'st.pending': 'Pending',
+  'st.paused': 'Paused',
 
   'push.sent': 'Sent',
   'push.failed': 'Not sent',
@@ -230,6 +234,8 @@ const en: Record<string, string> = {
   'act.run': 'Run now',
   'act.runShort': 'Run',
   'act.pushShort': 'Push',
+  'act.pause': 'Pause',
+  'act.resume': 'Resume',
   'act.save': 'Save',
   'act.cancel': 'Cancel',
   'act.delete': 'Delete',

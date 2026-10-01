@@ -202,6 +202,8 @@ const CSS = `
 .dsh-cb-task-time { color: var(--dsh-cb-dim); }
 .dsh-cb-task-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .dsh-cb-task-status { color: var(--dsh-cb-dim); }
+.dsh-cb-task-paused { opacity: .55; }
+.dsh-cb-task-paused .dsh-cb-task-title { text-decoration: line-through; text-decoration-color: rgba(20,20,30,.25); }
 .dsh-cb-row-action { border: 1px solid var(--dsh-cb-border-2); background: var(--dsh-cb-card); color: var(--dsh-cb-text); font-size: 12px; font-weight: 500; line-height: 1; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; box-shadow: 0 1px 2px rgba(20,20,30,.05); }
 .dsh-cb-row-action:hover { background: var(--dsh-cb-accent); border-color: var(--dsh-cb-accent); color: #fff; }
 .dsh-cb-row-action:active { transform: scale(.96); }
