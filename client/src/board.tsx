@@ -316,6 +316,11 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       createElement('h2', { className: 'dsh-cb-title' }, t('board.title')),
       pushChannelBadge,
       createElement('div', { className: 'dsh-cb-spacer' }),
+      createElement(
+        Btn,
+        { onClick: () => setShowArchived((v) => !v) },
+        (showArchived ? '▾ ' : '▸ ') + t('board.archived') + ' (' + archivedTasks.length + ')',
+      ),
       createElement(TextInput, { value: search, onChange: setSearch, placeholder: t('board.search') }),
       createElement(Btn, { kind: 'primary', onClick: () => setDetailId(null) }, '⊕ ' + t('board.new')),
     ),
