@@ -12,7 +12,7 @@ import type { Execution, TaskRow } from './contract.js';
 import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import { LedgerStore, type BoardTask } from './ledger.js';
 import { extractJsonObject } from './parse.js';
-import { Pusher, type DshImLike } from './pusher.js';
+import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { normalizeDraft, normalizeTags } from './rpc.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
@@ -331,6 +331,15 @@ async function main(): Promise<void> {
       { name: '仅分类' },
     ],
   });
+  // 钉钉 markdown 格式保真（2026-10-01 用户模板缩进/换行丢失实测）
+  const fmt = dingtalkFormatSafe('总结:\n  18P: 通过标记率 15.49%；\n18PM: 14.22%');
+  const fmtLines = fmt.split('\n');
+  eq(fmtLines.length, 3, '钉钉保真：行数不合并');
+  eq(fmtLines[1]!.startsWith('\u3000\u3000'), true, '钉钉保真：行首缩进转全角');
+  eq(fmtLines[1]!.endsWith('  '), true, '钉钉保真：行尾双空格硬换行');
+  eq(fmtLines[2]!.startsWith('\u3000'), false, '钉钉保真：无缩进行不加全角');
+  const fmtBlank = dingtalkFormatSafe('a\n\nb');
+  eq(fmtBlank.split('\n')[1] === '', true, '钉钉保真：空行不加尾随空格');
   const withPrefix = buildPromptWithTags(tagged);
   ok(withPrefix.startsWith('【标签提示 · 报告】输出使用组级口径'), '执行提示注入到 Prompt 前');
   ok(withPrefix.endsWith('做一件事'), '原文完整保留在注入段之后');
