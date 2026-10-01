@@ -91,27 +91,31 @@ export function DetailModal(props: {
   meta: MetaView | null;
   sessions?: { open?(sessionId: string): unknown };
   taskId: string | null;
+  /** 复制模式：以该任务为模板预填表单（taskId=null 新建）；操作按钮区仍按 task 判定。 */
+  cloneFrom?: TaskView | null;
   onClose: () => void;
   onChanged: () => void;
 }): ReactElement {
   const mounted = props.snapshot;
   const task: TaskView | null = props.taskId ? (mounted?.tasks.find((x) => x.id === props.taskId) ?? null) : null;
+  // 表单初始化数据源：编辑用 task；复制用 cloneFrom（不依赖 snapshot 时序）。
+  const src: TaskView | null = task ?? props.cloneFrom ?? null;
 
-  const [title, setTitle] = useState(task?.title ?? '');
-  const [prompt, setPrompt] = useState(task?.prompt ?? '');
-  const [cronFields, setCronFields] = useState<string[]>(splitCronFields(task?.cron ?? '0 9 * * 1'));
+  const [title, setTitle] = useState(src ? (task ? src.title : src.title + ' 副本') : '');
+  const [prompt, setPrompt] = useState(src?.prompt ?? '');
+  const [cronFields, setCronFields] = useState<string[]>(splitCronFields(src?.cron ?? '0 9 * * 1'));
   const cron = cronFields.map((f) => (f.trim() === '' ? '*' : f.trim())).join(' ');
-  const [enabled, setEnabled] = useState(task?.enabled ?? true);
-  const [workspaceId, setWorkspaceId] = useState(task?.pinned.workspaceId ?? '');
-  const [presetId, setPresetId] = useState(task?.pinned.presetId ?? '');
-  const [permission, setPermission] = useState(task?.pinned.permission ?? '');
-  const [pushKey, setPushKey] = useState(pushKeyOf(task?.push));
-  const [reuseSession, setReuseSession] = useState(task?.reuseSession !== false);
-  const [tags, setTags] = useState<TaskTag[]>(task?.tags ?? []);
+  const [enabled, setEnabled] = useState(src?.enabled ?? true);
+  const [workspaceId, setWorkspaceId] = useState(src?.pinned.workspaceId ?? '');
+  const [presetId, setPresetId] = useState(src?.pinned.presetId ?? '');
+  const [permission, setPermission] = useState(src?.pinned.permission ?? '');
+  const [pushKey, setPushKey] = useState(pushKeyOf(src?.push));
+  const [reuseSession, setReuseSession] = useState(src?.reuseSession !== false);
+  const [tags, setTags] = useState<TaskTag[]>(src?.tags ?? []);
   const [tagDraft, setTagDraft] = useState<{ name: string; promptPrefix: string }>({ name: '', promptPrefix: '' });
   // 任务图片编辑：undefined=不变（不传字段）；[]=清空；[...]=替换。base64 存 dataUrl 供预览。
   const [images, setImages] = useState<Array<{ name?: string; mediaType: string; data: string }> | undefined>(undefined);
-  const [existingImageCount] = useState(task?.promptImageRefs?.length ?? 0);
+  const [existingImageCount] = useState(src?.promptImageRefs?.length ?? 0);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -167,7 +171,11 @@ export function DetailModal(props: {
           push: parsePushKey(pushKey),
           reuseSession,
           tags: tags.length > 0 ? tags : undefined,
-          ...(images !== undefined ? { images } : {}),
+          ...(images !== undefined
+            ? { images }
+            : src?.promptImageRefs && src.promptImageRefs.length > 0
+              ? { imageRefs: src.promptImageRefs }
+              : {}),
         },
       });
       if (r.ok) {

@@ -170,7 +170,14 @@ export function normalizeDraft(raw: unknown): TaskDraft {
       return { ...(name === undefined ? {} : { name }), mediaType, data };
     });
   }
-  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags, images };
+  // 复制任务：直接携带源任务的 durable 图片引用（不可变内容寻址对象，引用共享安全）
+  let imageRefs: unknown[] | undefined;
+  if (r.imageRefs !== undefined) {
+    if (!Array.isArray(r.imageRefs)) fail('bad-request', 'imageRefs 必须是数组');
+    if (r.imageRefs.length > 4) fail('bad-request', '任务图片最多 4 张');
+    imageRefs = r.imageRefs.map((raw: unknown, idx: number) => asRecord(raw) as unknown as Record<string, unknown>);
+  }
+  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags, images, imageRefs };
 }
 
 /** 组装快照（存储行 + 派生标志），所有变更端点统一返回。 */
@@ -357,7 +364,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const now = new Date().toISOString();
         const nextAt = draft.enabled ? (cronNextRun(draft.cron, new Date())?.toISOString() ?? null) : null;
         // 任务图片入库（undefined=不变）：在账本事务外做（附件服务独立存储），失败则整体失败不落账本。
-        const imageRefs = draft.images !== undefined ? await deps.admitImages(draft.images) : undefined;
+        const imageRefs = draft.images !== undefined ? await deps.admitImages(draft.images) : draft.imageRefs;
         await deps.ledger.mutate((doc) => {
           const existing = draft.id ? doc.tasks.find((t) => t.id === draft.id) : undefined;
           if (existing) {

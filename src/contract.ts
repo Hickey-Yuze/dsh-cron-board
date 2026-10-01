@@ -173,6 +173,8 @@ export interface TaskDraft {
   tags?: TaskTag[];
   /** 任务图片（≤4 张）。undefined=不变；[]=清空；非空=全量替换。 */
   images?: PromptImageInput[];
+  /** 任务图片 durable 引用（复制任务场景：原样引用源任务的不可变附件对象）。 */
+  imageRefs?: unknown[];
 }
 
 export type CronBoardEndpoint =
