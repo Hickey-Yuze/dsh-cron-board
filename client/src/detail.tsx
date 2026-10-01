@@ -28,6 +28,52 @@ function getPortal(): { createPortal?(node: ReactNode, container: Element): Reac
   return portalApi;
 }
 
+/**
+ * 任务图片压缩（模型视觉输入标准规格）：长边 1568px、JPEG q0.85、白底
+ * （PNG 透明/GIF 动图首帧统一转 JPEG）。小体积原图原样保留。
+ * 目的：控制 RPC 请求体大小（base64 后单张通常 200~400KB）并省视觉 token。
+ */
+async function compressForModel(file: File): Promise<{ mediaType: string; data: string }> {
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength <= 512 * 1024 && (file.type === 'image/png' || file.type === 'image/jpeg')) {
+    return { mediaType: file.type, data: toBase64(new Uint8Array(buf)) };
+  }
+  try {
+    const bitmap = await createImageBitmap(new Blob([buf], { type: file.type }));
+    const long = Math.max(bitmap.width, bitmap.height);
+    const scale = Math.min(1, 1568 / long);
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const c2d = canvas.getContext('2d');
+    if (!c2d) throw new Error('canvas 不可用');
+    c2d.fillStyle = '#ffffff';
+    c2d.fillRect(0, 0, w, h);
+    c2d.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('图片编码失败'))), 'image/jpeg', 0.85);
+    });
+    return { mediaType: 'image/jpeg', data: toBase64(new Uint8Array(await blob.arrayBuffer())) };
+  } catch {
+    // 降级：原样发送（可能触发请求体超限，由服务端报明确错误）
+    const fallbackType = file.type === 'image/gif' || file.type === 'image/webp' ? file.type : 'image/png';
+    return { mediaType: fallbackType, data: toBase64(new Uint8Array(buf)) };
+  }
+}
+
+/** Uint8Array → 规范 base64（分块避免 apply 栈溢出）。 */
+function toBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
 function pushOptions(meta: MetaView | null): { value: string; label: string }[] {
   const options = [{ value: '', label: t('f.pushNone') }];
   if (meta) {
@@ -490,11 +536,7 @@ export function DetailModal(props: {
                             const next: Array<{ name?: string; mediaType: string; data: string }> = [];
                             for (const file of files.slice(0, 4)) {
                               if (!file.type.startsWith('image/')) continue;
-                              const buf = await file.arrayBuffer();
-                              let bin = '';
-                              const bytes = new Uint8Array(buf);
-                              for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
-                              next.push({ name: file.name, mediaType: file.type, data: btoa(bin) });
+                              next.push({ name: file.name, ...(await compressForModel(file)) });
                             }
                             setImages((prev) => [...(prev ?? []), ...next].slice(0, 4));
                           })();
