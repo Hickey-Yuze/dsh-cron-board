@@ -92,8 +92,9 @@ function ProjectGroup(props: {
   onRun: (task: TaskView) => void;
   onTestPush: (task: TaskView) => void;
   onDelete: (task: TaskView) => void;
+  onToggleEnabled: (task: TaskView) => void;
 }): ReactElement {
-  const { name, color, count, tasks, expanded, onToggle, onTaskClick, onRun, onTestPush, onDelete } = props;
+  const { name, color, count, tasks, expanded, onToggle, onTaskClick, onRun, onTestPush, onDelete, onToggleEnabled } = props;
 
   return createElement(
     'div',
@@ -120,7 +121,7 @@ function ProjectGroup(props: {
                 const priorityTone = priority === '高' ? 'err' : priority === '中' ? 'warn' : 'ok';
                 return createElement(
                   'div',
-                  { key: task.id, className: 'dsh-cb-task-item', onClick: () => onTaskClick(task) },
+                  { key: task.id, className: 'dsh-cb-task-item' + (task.enabled === false ? ' dsh-cb-task-paused' : ''), onClick: () => onTaskClick(task) },
                   createElement('div', { className: 'dsh-cb-task-row' },
                     createElement('span', { className: 'dsh-cb-task-bullet' }),
                     createElement('span', { className: 'dsh-cb-task-title' }, task.title),
@@ -133,10 +134,11 @@ function ProjectGroup(props: {
                     createElement('span', { className: 'dsh-cb-task-actions' },
                       rowAction(t('act.runShort'), () => onRun(task)),
                       rowAction(t('act.pushShort'), () => onTestPush(task)),
+                      rowAction(task.enabled === false ? t('act.resume') : t('act.pause'), () => onToggleEnabled(task)),
                       rowAction(t('act.delete'), () => onDelete(task), true),
                     ),
                     createElement('span', { className: 'dsh-cb-task-status' },
-                      last ? t(`st.${last.status}`) : t('st.pending'),
+                      task.enabled === false ? t('st.paused') : last ? t(`st.${last.status}`) : t('st.pending'),
                     ),
                   ),
                 );
@@ -378,6 +380,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
               onRun: (task) => void props.rpc('cron-board/task-run', { id: task.id }).then(() => void load()),
               onTestPush: (task) => void props.rpc('cron-board/push-test', { id: task.id }).then(() => void load()),
               onDelete: (task) => void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load()),
+              onToggleEnabled: (task) => void props.rpc('cron-board/task-toggle', { id: task.id, enabled: task.enabled === false }).then(() => void load()),
             });
           }),
     ),
