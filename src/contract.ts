@@ -78,6 +78,8 @@ export interface TaskRow {
   archived?: boolean;
   /** 任务标签（≤8）：分类徽章 + 筛选 + 执行提示注入。 */
   tags?: TaskTag[];
+  /** 任务图片 durable 引用（附件服务权威，JSON 原样存；执行时随 Prompt 发给模型）。 */
+  promptImageRefs?: unknown[];
   createdAt: string;
   updatedAt: string;
   executions: Execution[];
@@ -151,6 +153,14 @@ export interface SettingsView {
   dataDir: string;
 }
 
+/** 任务图片输入（base64；host 经附件服务入库换 durable ref）。 */
+export interface PromptImageInput {
+  name?: string;
+  mediaType: string;
+  /** 规范 base64（不含 data: 前缀）。 */
+  data: string;
+}
+
 export interface TaskDraft {
   id?: string;
   title: string;
@@ -161,6 +171,8 @@ export interface TaskDraft {
   push?: PushTargetRef | null;
   reuseSession?: boolean;
   tags?: TaskTag[];
+  /** 任务图片（≤4 张）。undefined=不变；[]=清空；非空=全量替换。 */
+  images?: PromptImageInput[];
 }
 
 export type CronBoardEndpoint =

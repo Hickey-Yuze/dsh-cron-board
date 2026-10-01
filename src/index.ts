@@ -84,6 +84,23 @@ export async function apply(ctx: Context, config: CronBoardConfig): Promise<void
     log,
     buildSnapshot: () => buildSnapshot(deps),
     parsePrompt: createAiParser(ctx, log).parse,
+    // 任务图片入库：经宿主附件服务换 durable ref（官方 admitPromptContent 路径）。
+    admitImages: async (images) => {
+      const store = ctx.get('attachments') as
+        | { admitPromptContent(content: unknown[]): Promise<Array<{ type: string; attachment?: unknown }>> }
+        | undefined;
+      if (!store?.admitPromptContent) throw new Error('附件服务不可用（无法保存任务图片）');
+      const content = images.map((img) => ({
+        type: 'image' as const,
+        mediaType: img.mediaType,
+        data: img.data,
+        ...(img.name === undefined ? {} : { name: img.name }),
+      }));
+      const parts = await store.admitPromptContent(content);
+      const refs = parts.filter((p) => p.type === 'image').map((p) => p.attachment);
+      if (refs.length !== images.length) throw new Error('图片入库数量不匹配');
+      return refs;
+    },
   };
 
   // 注册期抛错会杀插件 fiber：RPC 挂载内部自兜底，这里再套一层

@@ -445,7 +445,11 @@ export class TaskRunner {
       try {
         agent.followup(
           requireDshLlm().createUserMessage({
-            content: [{ type: 'text', text: buildPromptWithTags(task) }],
+            content: [
+              { type: 'text', text: buildPromptWithTags(task) },
+              // 任务图片（durable ref）：dsh-llm ImageBlock 官方形状，随 Prompt 发给模型
+              ...(task.promptImageRefs ?? []).map((ref) => ({ type: 'image' as const, attachment: ref })),
+            ],
             source: { kind: 'user' },
           }),
         );

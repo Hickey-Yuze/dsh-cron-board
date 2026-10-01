@@ -17,6 +17,7 @@ import type {
   TaskRow,
   TaskTag,
   TaskView,
+  PromptImageInput,
 } from './contract.js';
 import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import type { LedgerStore } from './ledger.js';
@@ -59,6 +60,8 @@ export interface RpcDeps {
   buildSnapshot(): BoardSnapshot;
   /** AI 解析（index.ts 注入，依赖 llm/agentDefaultModel；rpc 层不直接耦合 llm）。 */
   parsePrompt(text: string, signal: AbortSignal): Promise<{ title?: string; prompt?: string; cron?: string }>;
+  /** 任务图片入库（index.ts 注入，依赖宿主附件服务）。 */
+  admitImages(images: PromptImageInput[]): Promise<unknown[]>;
 }
 
 function fail(code: string, message: string): never {
@@ -152,7 +155,22 @@ export function normalizeDraft(raw: unknown): TaskDraft {
     };
   }
   const push = r.push === undefined ? undefined : asPushTarget(r.push);
-  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags };
+  // 任务图片：undefined=不变；数组=全量替换/清空。单张 base64 ≤ 3MB，≤4 张。
+  let images: PromptImageInput[] | undefined;
+  if (r.images !== undefined) {
+    if (!Array.isArray(r.images)) fail('bad-request', 'images 必须是数组');
+    if (r.images.length > 4) fail('bad-request', '任务图片最多 4 张');
+    images = r.images.map((raw: unknown, idx: number) => {
+      const ir = asRecord(raw);
+      const data = asString(ir.data, 'images[' + idx + '].data', 4 * 1024 * 1024);
+      const mediaType = asString(ir.mediaType, 'images[' + idx + '].mediaType', 64);
+      if (!/^image\/(png|jpeg|webp|gif)$/.test(mediaType)) fail('bad-request', '不支持的图片格式: ' + mediaType);
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data) || data.length === 0) fail('bad-request', '图片 data 必须是规范 base64');
+      const name = ir.name === undefined || ir.name === null || ir.name === '' ? undefined : asString(ir.name, 'images[' + idx + '].name', 120);
+      return { ...(name === undefined ? {} : { name }), mediaType, data };
+    });
+  }
+  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags, images };
 }
 
 /** 组装快照（存储行 + 派生标志），所有变更端点统一返回。 */
@@ -338,6 +356,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const draft = normalizeDraft(r.task);
         const now = new Date().toISOString();
         const nextAt = draft.enabled ? (cronNextRun(draft.cron, new Date())?.toISOString() ?? null) : null;
+        // 任务图片入库（undefined=不变）：在账本事务外做（附件服务独立存储），失败则整体失败不落账本。
+        const imageRefs = draft.images !== undefined ? await deps.admitImages(draft.images) : undefined;
         await deps.ledger.mutate((doc) => {
           const existing = draft.id ? doc.tasks.find((t) => t.id === draft.id) : undefined;
           if (existing) {
@@ -349,6 +369,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             existing.push = draft.push === undefined ? existing.push : draft.push;
             if (draft.reuseSession !== undefined) existing.reuseSession = draft.reuseSession;
             if (draft.tags !== undefined) existing.tags = draft.tags;
+            if (imageRefs !== undefined) existing.promptImageRefs = imageRefs;
             // 确认门重武装：指纹变化即失效
             if (existing.confirm && existing.confirm.fingerprint !== confirmFingerprint(existing)) {
               existing.confirm = null;
@@ -371,6 +392,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               lastPushTest: null,
               reuseSession: draft.reuseSession ?? true,
               tags: draft.tags ?? [],
+              ...(imageRefs !== undefined && imageRefs.length > 0 ? { promptImageRefs: imageRefs } : {}),
               createdAt: now,
               updatedAt: now,
               executions: [],

@@ -63,6 +63,9 @@ export function DetailModal(props: {
   const [reuseSession, setReuseSession] = useState(task?.reuseSession !== false);
   const [tags, setTags] = useState<TaskTag[]>(task?.tags ?? []);
   const [tagDraft, setTagDraft] = useState<{ name: string; promptPrefix: string }>({ name: '', promptPrefix: '' });
+  // 任务图片编辑：undefined=不变（不传字段）；[]=清空；[...]=替换。base64 存 dataUrl 供预览。
+  const [images, setImages] = useState<Array<{ name?: string; mediaType: string; data: string }> | undefined>(undefined);
+  const [existingImageCount] = useState(task?.promptImageRefs?.length ?? 0);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -118,6 +121,7 @@ export function DetailModal(props: {
           push: parsePushKey(pushKey),
           reuseSession,
           tags: tags.length > 0 ? tags : undefined,
+          ...(images !== undefined ? { images } : {}),
         },
       });
       if (r.ok) {
@@ -441,6 +445,70 @@ export function DetailModal(props: {
               : null,
           ),
         ),
+        !archived
+          ? createElement(
+              Field,
+              { label: t('f.images') },
+              createElement(
+                'div',
+                { className: 'dsh-cb-tagrow' },
+                // 已存图（durable ref，客户端无法预览，仅显示计数）
+                images === undefined && existingImageCount > 0
+                  ? createElement('span', { className: 'dsh-cb-hint' }, t('f.existingImages').replace('{n}', String(existingImageCount)))
+                  : null,
+                // 新选图片预览
+                (images ?? []).map((img, idx) =>
+                  createElement(
+                    'span',
+                    { className: 'dsh-cb-tagitem', key: idx },
+                    createElement('img', {
+                      src: 'data:' + img.mediaType + ';base64,' + img.data,
+                      alt: img.name ?? String(idx),
+                      style: { width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--dsh-cb-border)' },
+                    }),
+                    createElement(
+                      Btn,
+                      { kind: 'ghost', onClick: () => setImages((prev) => (prev ?? []).filter((_, i) => i !== idx)) },
+                      t('f.tagRemove'),
+                    ),
+                  ),
+                ),
+                (images ?? []).length < 4
+                  ? createElement(
+                      'div',
+                      { className: 'dsh-cb-tagitem' },
+                      createElement('input', {
+                        type: 'file',
+                        accept: 'image/png,image/jpeg,image/webp,image/gif',
+                        multiple: true,
+                        style: { fontSize: 12 },
+                        onChange: (e: { target?: { files?: FileList | null; value?: string } }) => {
+                          const files = Array.from(e?.target?.files ?? []);
+                          if (e.target) e.target.value = '';
+                          if (files.length === 0) return;
+                          void (async () => {
+                            const next: Array<{ name?: string; mediaType: string; data: string }> = [];
+                            for (const file of files.slice(0, 4)) {
+                              if (!file.type.startsWith('image/')) continue;
+                              const buf = await file.arrayBuffer();
+                              let bin = '';
+                              const bytes = new Uint8Array(buf);
+                              for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+                              next.push({ name: file.name, mediaType: file.type, data: btoa(bin) });
+                            }
+                            setImages((prev) => [...(prev ?? []), ...next].slice(0, 4));
+                          })();
+                        },
+                      }),
+                      images !== undefined && images.length > 0
+                        ? createElement(Btn, { kind: 'ghost', onClick: () => setImages([]) }, t('f.clearImages'))
+                        : null,
+                    )
+                  : null,
+                createElement('span', { className: 'dsh-cb-hint' }, t('f.imagesHint')),
+              ),
+            )
+          : null,
         task && task.executions.length > 0 && task.needsConfirm && task.confirmed
           ? createElement('div', { className: 'dsh-cb-notebox' }, t('dl.ranOnce'))
           : null,
