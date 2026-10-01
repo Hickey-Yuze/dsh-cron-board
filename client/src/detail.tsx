@@ -184,6 +184,7 @@ export function DetailModal(props: {
   async function action(
     fn: () => Promise<{ ok: true; value: unknown } | { ok: false; error: { message: string } }>,
     okMsg: string,
+    onSuccess?: () => void,
   ): Promise<void> {
     setBusy(true);
     setErr(null);
@@ -192,6 +193,7 @@ export function DetailModal(props: {
       const r = await fn();
       if (r.ok) {
         setNote(okMsg);
+        onSuccess?.();
         props.onChanged();
       } else {
         setErr(r.error.message);
@@ -273,7 +275,7 @@ export function DetailModal(props: {
           ? createElement(
               Badge,
               { tone: task.enabled ? 'accent' : 'default' },
-              task.enabled ? t('act.enable') : t('act.disable'),
+              task.enabled ? t('st.enabledOn') : t('st.enabledOff'),
             )
           : null,
         createElement(Btn, { kind: 'ghost', onClick: props.onClose }, t('act.close')),
@@ -604,14 +606,17 @@ export function DetailModal(props: {
             ? createElement(
                 Btn,
                 {
-                  disabled: busy || enabled === task.enabled,
-                  onClick: () =>
+                  disabled: busy,
+                  onClick: () => {
+                    const next = !task.enabled;
                     void action(
-                      () => props.rpc('cron-board/task-toggle', { id: task.id, enabled }),
-                      enabled ? t('act.enable') : t('act.disable'),
-                    ),
+                      () => props.rpc('cron-board/task-toggle', { id: task.id, enabled: next }),
+                      next ? t('act.enable') : t('act.disable'),
+                      () => setEnabled(next),
+                    );
+                  },
                 },
-                enabled ? t('act.enable') : t('act.disable'),
+                task.enabled ? t('act.disable') : t('act.enable'),
               )
             : null,
           task && !archived
