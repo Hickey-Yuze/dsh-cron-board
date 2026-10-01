@@ -178,21 +178,20 @@ export class Pusher {
 }
 
 /**
- * 钉钉通道格式保真：钉钉把消息按 markdown 渲染——单换行不换行（行合并）、行首半角空格被吃。
- * 对策（2026-10-01 用户模板缩进/换行丢失实测）：
- *  1) 每行行尾补两个空格（markdown 硬换行 <br> 语义）→ 模板每行独立成行；
+ * 钉钉通道格式保真：钉钉把消息按 markdown 渲染——单换行不换行（行合并成段）、行首半角空格被吃。
+ * 钉钉的 markdown 是简化实现：不支持行尾双空格硬换行（2026-10-01 用户实测无效），换行必须用 \n\n。
+ * 对策：
+ *  1) 连续换行折叠后，每行之间插入空行（\n\n）→ 模板每行独立成段；
  *  2) 行首半角缩进 → 全角空格（U+3000，markdown 不视作缩进语法，原样保留）。
- * 空行跳过（双空格无意义）；对纯 text 渲染的通道无副作用（行尾空格不可见）。
  */
 export function dingtalkFormatSafe(raw: string): string {
   return raw
     .split('\n')
     .map((line) => {
-      if (line.trim() === '') return '';
       const lead = /^ +/.exec(line)?.[0].length ?? 0;
-      return '\u3000'.repeat(lead) + line.slice(lead).trimEnd() + '  ';
+      return '\u3000'.repeat(lead) + line.slice(lead).trimEnd();
     })
-    .join('\n');
+    .join('\n\n');
 }
 
 /** 简讯正文的截断保护：按 UTF-8 字节算（dsh-im 微信通道单条 ~2048 字节即拆条，正文留 1200 字节）。 */
