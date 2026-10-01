@@ -1,17 +1,31 @@
 /**
  * 看板主面板（main 键位槽位 dsh-cron-board）：
- * 统计卡（总任务/运行中/今日执行/失败率）+ chip 筛选行 + 表格布局（2026-09-27 参考图改版）。
- * 背景色不变（跟随宿主令牌）。Host snapshot 是唯一已确认 UI 状态；5s 轮询 + 动作后即时刷新。
+ * 深色主题 + 统计概览 + 项目分组折叠布局。
+ * Host snapshot 是唯一已确认 UI 状态；5s 轮询 + 动作后即时刷新。
  */
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { BoardSnapshot, Execution, MetaView, TaskView } from '../../src/contract.js';
 import { describeCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, fmtFuture } from './format.js';
 import { lang, t } from './i18n.js';
 import { DetailModal } from './detail.js';
 import type { RpcFn } from './rpc.js';
-import { Badge, Btn, Select, TagBadge, TextInput } from './ui.js';
+import { Badge, Btn, Dot, Select, TagBadge, TextInput } from './ui.js';
+
+function statusTone(s: Execution['status']): 'ok' | 'err' | 'warn' | 'accent' {
+  if (s === 'success') return 'ok';
+  if (s === 'failed') return 'err';
+  if (s === 'timeout' || s === 'canceled') return 'warn';
+  return 'accent';
+}
+
+function dotTone(s: Execution['status']): 'run' | 'ok' | 'err' | 'warn' {
+  if (s === 'running') return 'run';
+  if (s === 'success') return 'ok';
+  if (s === 'failed') return 'err';
+  return 'warn';
+}
 
 function skipText(reason: string): string {
   const key = `skip.${reason}`;
@@ -19,69 +33,118 @@ function skipText(reason: string): string {
   return v === key ? reason : v;
 }
 
-/* ── SVG 图标（16px stroke，与侧栏日历时钟同风格） ── */
-const svgAttrs = 'viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
-const ICO = {
-  calendar: `<svg ${svgAttrs}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>`,
-  play: `<svg ${svgAttrs}><polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/></svg>`,
-  bolt: `<svg ${svgAttrs}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" stroke="none"/></svg>`,
-  warn: `<svg ${svgAttrs}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>`,
-  edit: `<svg ${svgAttrs}><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
-  pause: `<svg ${svgAttrs}><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></svg>`,
-  resume: `<svg ${svgAttrs}><polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/></svg>`,
-  send: `<svg ${svgAttrs}><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>`,
-  trash: `<svg ${svgAttrs}><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg>`,
-};
+/** 统计卡片 */
+function StatCard(props: {
+  icon: ReactNode;
+  label: string;
+  count: number;
+  unit: string;
+  change?: number;
+  tone?: 'default' | 'ok' | 'warn' | 'err' | 'accent';
+  onClick?: () => void;
+}): ReactElement {
+  const { icon, label, count, unit, change, tone = 'default', onClick } = props;
+  const changeText = change !== undefined
+    ? `${change >= 0 ? '↑' : '↓'}${Math.abs(change)}%`
+    : null;
+  const changeTone = change !== undefined ? (change >= 0 ? 'ok' : 'err') : undefined;
 
-/** 表格操作图标按钮（stopPropagation 防触发整行详情）。 */
-function icoBtn(icon: string, title: string, onClick: () => void, danger = false, disabled = false): ReactElement {
-  void danger;
-  return createElement('button', {
-    className: 'dsh-cb-ico-btn',
-    title,
-    'aria-label': title,
-    disabled,
-    onClick: (e: { stopPropagation: () => void }) => {
-      e.stopPropagation();
-      if (!disabled) onClick();
-    },
-    dangerouslySetInnerHTML: { __html: icon },
-  });
-}
-
-/** 任务状态胶囊语义：运行中/已暂停/失败/待执行。 */
-function taskStatus(task: TaskView): { key: string; tone: string } {
-  if (task.running) return { key: 'st.running', tone: 'running' };
-  if (task.enabled === false) return { key: 'st.paused', tone: 'paused' };
-  const last = task.executions[0];
-  if (last && (last.status === 'failed' || last.status === 'timeout')) return { key: `st.${last.status}`, tone: 'failed' };
-  if (last && last.status === 'success') return { key: 'st.success', tone: 'success' };
-  return { key: 'st.pending', tone: 'pending' };
-}
-
-/** 统计卡片（彩色圆底图标 + 数值 + 副文案）。 */
-function StatCard(props: { tint: string; icon: string; label: string; value: string; sub: string; subTone: 'ok' | 'err' | 'dim' }): ReactElement {
-  const { tint, icon, label, value, sub, subTone } = props;
   return createElement(
     'div',
-    { className: 'dsh-cb-stat-card dsh-cb-stat-card2' },
-    createElement('div', { className: 'dsh-cb-stat-iconwrap', style: { background: tint } , dangerouslySetInnerHTML: { __html: icon } }),
-    createElement('div', { className: 'dsh-cb-stat-main' },
-      createElement('div', { className: 'dsh-cb-stat-label' }, label),
-      createElement('div', { className: 'dsh-cb-stat-count' }, value),
-      createElement('div', { className: `dsh-cb-stat-sub dsh-cb-stat-sub-${subTone}` }, sub),
+    { className: `dsh-cb-stat-card dsh-cb-stat-${tone}`, onClick, style: onClick ? { cursor: 'pointer' } : undefined },
+    createElement('div', { className: 'dsh-cb-stat-head' },
+      createElement('span', { className: 'dsh-cb-stat-label' }, label),
+      createElement('div', { className: 'dsh-cb-stat-icon' }, icon),
     ),
+    createElement('div', { className: 'dsh-cb-stat-body' },
+      createElement('span', { className: 'dsh-cb-stat-count' }, String(count)),
+      createElement('span', { className: 'dsh-cb-stat-unit' }, unit),
+    ),
+    changeText
+      ? createElement('div', { className: 'dsh-cb-stat-foot' },
+          createElement('span', { className: 'dsh-cb-stat-change-label' }, t('stat.vsYesterday')),
+          createElement('span', { className: `dsh-cb-stat-change dsh-cb-change-${changeTone}` }, changeText),
+        )
+      : null,
   );
 }
 
-/** chip 筛选按钮。 */
-function Chip(props: { label: string; count: number; active: boolean; onClick: () => void }): ReactElement {
-  const { label, count, active, onClick } = props;
+/** 任务行内联操作文字胶囊（stopPropagation 防触发整行打开详情）。 */
+function rowAction(label: string, onClick: () => void, danger = false): ReactElement {
+  return createElement('button', {
+    className: `dsh-cb-row-action${danger ? ' dsh-cb-row-action-danger' : ''}`,
+    onClick: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onClick();
+    },
+  }, label);
+}
+
+/** 项目分组卡片 */
+function ProjectGroup(props: {
+  name: string;
+  color: string;
+  count: number;
+  tasks: TaskView[];
+  expanded: boolean;
+  onToggle: () => void;
+  onTaskClick: (task: TaskView) => void;
+  onRun: (task: TaskView) => void;
+  onTestPush: (task: TaskView) => void;
+  onDelete: (task: TaskView) => void;
+  onToggleEnabled: (task: TaskView) => void;
+}): ReactElement {
+  const { name, color, count, tasks, expanded, onToggle, onTaskClick, onRun, onTestPush, onDelete, onToggleEnabled } = props;
+
   return createElement(
-    'button',
-    { className: 'dsh-cb-chip' + (active ? ' dsh-cb-chip-active' : ''), onClick },
-    label,
-    createElement('span', { className: 'dsh-cb-chip-count' }, String(count)),
+    'div',
+    { className: 'dsh-cb-project-group' },
+    createElement(
+      'div',
+      { className: 'dsh-cb-project-head', onClick: onToggle },
+      createElement('div', { className: 'dsh-cb-project-title-row' },
+        createElement('span', { className: 'dsh-cb-project-dot', style: { background: color } }),
+        createElement('strong', { className: 'dsh-cb-project-name' }, name),
+        createElement('span', { className: 'dsh-cb-project-count' }, String(count)),
+      ),
+      createElement('span', { className: `dsh-cb-chevron ${expanded ? 'dsh-cb-chevron-open' : ''}` }, '▼'),
+    ),
+    expanded
+      ? createElement(
+          'div',
+          { className: 'dsh-cb-project-body' },
+          tasks.length === 0
+            ? createElement('div', { className: 'dsh-cb-empty-task' }, t('board.noTask'))
+            : tasks.map((task) => {
+                const last = task.executions[0];
+                const priority = task.tags?.[0]?.name ?? '';
+                const priorityTone = priority === '高' ? 'err' : priority === '中' ? 'warn' : 'ok';
+                return createElement(
+                  'div',
+                  { key: task.id, className: 'dsh-cb-task-item' + (task.enabled === false ? ' dsh-cb-task-paused' : ''), onClick: () => onTaskClick(task) },
+                  createElement('div', { className: 'dsh-cb-task-row' },
+                    createElement('span', { className: 'dsh-cb-task-bullet' }),
+                    createElement('span', { className: 'dsh-cb-task-title' }, task.title),
+                  ),
+                  createElement('div', { className: 'dsh-cb-task-meta' },
+                    createElement(Badge, { tone: priorityTone as any }, priority || t('task.low')),
+                    createElement('span', { className: 'dsh-cb-task-time' },
+                      last ? fmtAgo(last.endedAt ?? last.startedAt) : '-',
+                    ),
+                    createElement('span', { className: 'dsh-cb-task-actions' },
+                      rowAction(t('act.runShort'), () => onRun(task)),
+                      rowAction(t('act.pushShort'), () => onTestPush(task)),
+                      rowAction(task.enabled === false ? t('act.resume') : t('act.pause'), () => onToggleEnabled(task)),
+                      rowAction(t('act.delete'), () => onDelete(task), true),
+                    ),
+                    createElement('span', { className: 'dsh-cb-task-status' },
+                      task.enabled === false ? t('st.paused') : last ? t(`st.${last.status}`) : t('st.pending'),
+                    ),
+                  ),
+                );
+              }),
+        )
+      : null,
   );
 }
 
@@ -92,7 +155,8 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [detailId, setDetailId] = useState<string | null | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'paused' | 'failed'>('all');
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<string | null>(null); // 统计卡片筛选：todo/running/completed/logs
 
   const load = useCallback(async () => {
     const r = await props.rpc('cron-board/state');
@@ -121,58 +185,76 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const activeTasks = tasks.filter((task) => !task.archived);
   const archivedTasks = tasks.filter((task) => task.archived);
 
-  /* ── 统计 ── */
-  const stats = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const weekStart = todayStart - ((now.getDay() + 6) % 7) * 86_400_000; // 本周一零点
-    const sevenAgo = now.getTime() - 7 * 86_400_000;
-    const allExecs = activeTasks.flatMap((task) => task.executions);
-    const weekExecs = allExecs.filter((e) => new Date(e.startedAt).getTime() >= sevenAgo);
-    const weekFails = weekExecs.filter((e) => e.status === 'failed' || e.status === 'timeout').length;
-    const todayRuns = allExecs.filter((e) => new Date(e.startedAt).getTime() >= todayStart).length;
-    return {
-      total: activeTasks.length,
-      weekNew: activeTasks.filter((task) => new Date(task.createdAt).getTime() >= weekStart).length,
-      running: activeTasks.filter((task) => task.running).length,
-      paused: activeTasks.filter((task) => task.enabled === false).length,
-      todayRuns,
-      totalRuns: allExecs.length,
-      failRate: weekExecs.length > 0 ? Math.round((weekFails / weekExecs.length) * 1000) / 10 : 0,
-      weekFails,
-      failedTasks: activeTasks.filter((task) => {
-        const last = task.executions[0];
-        return last !== undefined && (last.status === 'failed' || last.status === 'timeout');
-      }).length,
-    };
+  // 统计
+  const todoCount = activeTasks.filter((t) => t.enabled && !t.running).length;
+  const runningCount = activeTasks.filter((t) => t.running).length;
+  const completedCount = activeTasks.filter((t) => {
+    const last = t.executions[0];
+    return last && last.status === 'success';
+  }).length;
+  // 日志：最近 5 条执行记录
+  const recentLogs = useMemo(() => {
+    const logs: Array<{ task: TaskView; exec: Execution }> = [];
+    for (const task of activeTasks) {
+      for (const exec of task.executions) {
+        logs.push({ task, exec });
+      }
+    }
+    logs.sort((a, b) => {
+      const aTime = a.exec.endedAt ?? a.exec.startedAt;
+      const bTime = b.exec.endedAt ?? b.exec.startedAt;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+    return logs.slice(0, 5);
   }, [activeTasks]);
 
-  /* ── 筛选 ── */
-  const filtered = useMemo(() => {
-    let list = activeTasks;
-    if (statusFilter === 'running') list = list.filter((task) => task.running);
-    else if (statusFilter === 'paused') list = list.filter((task) => task.enabled === false);
-    else if (statusFilter === 'failed') {
-      list = list.filter((task) => {
-        const last = task.executions[0];
-        return last !== undefined && (last.status === 'failed' || last.status === 'timeout');
-      });
+  // 筛选后的任务
+  const filteredTasks = useMemo(() => {
+    if (!statusFilter) return activeTasks;
+    if (statusFilter === 'todo') return activeTasks.filter((t) => t.enabled && !t.running);
+    if (statusFilter === 'running') return activeTasks.filter((t) => t.running);
+    if (statusFilter === 'completed') return activeTasks.filter((t) => {
+      const last = t.executions[0];
+      return last && last.status === 'success';
+    });
+    if (statusFilter === 'logs') return []; // 日志模式不显示任务列表
+    return activeTasks;
+  }, [activeTasks, statusFilter]);
+
+  // 按项目分组
+  const projectGroups = useMemo(() => {
+    const groups = new Map<string, TaskView[]>();
+    for (const task of filteredTasks) {
+      const wsId = task.pinned.workspaceId || '';
+      const ws = meta?.workspaces.find((w) => w.id === wsId);
+      const name = ws?.title || t('board.other');
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name)!.push(task);
     }
+    return Array.from(groups.entries());
+  }, [filteredTasks, meta]);
+
+  const toggleProject = (name: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const projectColors = ['#4b6bfb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+  const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (q === '') return list;
-    return list.filter(
+    if (q === '') return activeTasks;
+    return activeTasks.filter(
       (task) =>
         task.title.toLowerCase().includes(q) ||
         task.prompt.toLowerCase().includes(q) ||
         (task.tags ?? []).some((tag) => tag.name.toLowerCase().includes(q)),
     );
-  }, [activeTasks, statusFilter, search]);
-
-  const zh = lang() === 'zh';
-  const cronDesc = (task: TaskView): string => {
-    const d = describeCron(task.cron, zh ? 'zh' : 'en');
-    return d === task.cron ? '' : d;
-  };
+  }, [activeTasks, search]);
 
   const pushChannelBadge = snap
     ? createElement(
@@ -186,56 +268,6 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       )
     : null;
 
-  /* ── 表格 ── */
-  const tableRows = filtered.map((task) => {
-    const last = task.executions[0];
-    const st = taskStatus(task);
-    const nextRun = task.enabled === false ? '—' : task.nextRunAt ? fmtFuture(task.nextRunAt) : '—';
-    return createElement(
-      'div',
-      { key: task.id, className: 'dsh-cb-tr' + (task.enabled === false ? ' dsh-cb-tr-paused' : ''), onClick: () => setDetailId(task.id) },
-      // 任务名称（色点 + 标题 + cron 描述副标题）
-      createElement('div', { className: 'dsh-cb-td dsh-cb-td-name' },
-        createElement('span', { className: 'dsh-cb-tr-dot', style: { background: task.running ? '#10b981' : task.enabled === false ? '#9ca3af' : st.tone === 'failed' ? '#ef4444' : '#4b6bfb' } }),
-        createElement('div', { className: 'dsh-cb-tr-namewrap' },
-          createElement('span', { className: 'dsh-cb-tr-title' }, task.title),
-          cronDesc(task) !== '' ? createElement('span', { className: 'dsh-cb-tr-sub' }, cronDesc(task)) : null,
-        ),
-      ),
-      // CRON
-      createElement('div', { className: 'dsh-cb-td' }, createElement('code', { className: 'dsh-cb-cron-chip' }, task.cron)),
-      // 状态
-      createElement('div', { className: 'dsh-cb-td' },
-        createElement('span', { className: `dsh-cb-status-pill dsh-cb-st-${st.tone}` },
-          createElement('span', { className: 'dsh-cb-status-dot' }),
-          t(st.key),
-        ),
-      ),
-      // 上次执行
-      createElement('div', { className: 'dsh-cb-td' },
-        last
-          ? createElement('div', { className: 'dsh-cb-lastwrap' },
-              createElement('span', null, fmtAgo(last.endedAt ?? last.startedAt)),
-              last.durationMs !== undefined ? createElement('span', { className: 'dsh-cb-lastdur' }, fmtDur(last.durationMs)) : null,
-            )
-          : '—',
-      ),
-      // 下次执行
-      createElement('div', { className: 'dsh-cb-td dsh-cb-td-next' }, nextRun),
-      // 操作
-      createElement('div', { className: 'dsh-cb-td dsh-cb-td-actions', onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
-        icoBtn(ICO.edit, t('act.edit'), () => setDetailId(task.id)),
-        icoBtn(ICO.play, t('act.run'), () => void props.rpc('cron-board/task-run', { id: task.id }).then(() => void load()), false, task.running),
-        icoBtn(task.enabled === false ? ICO.resume : ICO.pause, task.enabled === false ? t('act.resume') : t('act.pause'), () => void props.rpc('cron-board/task-toggle', { id: task.id, enabled: task.enabled === false }).then(() => void load())),
-        icoBtn(ICO.send, t('act.testPush'), () => void props.rpc('cron-board/push-test', { id: task.id }).then(() => void load())),
-        icoBtn(ICO.trash, t('act.delete'), () => {
-          if (typeof window !== 'undefined' && !window.confirm(t('dl.deleteConfirm'))) return;
-          void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load());
-        }, true),
-      ),
-    );
-  });
-
   return createElement(
     'div',
     { className: 'dsh-cb-root' },
@@ -244,20 +276,36 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       'div',
       { className: 'dsh-cb-stats-row' },
       createElement(StatCard, {
-        tint: 'rgba(75,107,251,.12)', icon: ICO.calendar, label: t('stat.total'), value: String(stats.total),
-        sub: t('stat.weekNew').replace('{n}', String(stats.weekNew)), subTone: 'ok',
+        icon: createElement('span', null, ''),
+        label: t('stat.todo'),
+        count: todoCount,
+        unit: t('stat.tasks'),
+        tone: 'default',
+        onClick: () => setStatusFilter(statusFilter === 'todo' ? null : 'todo'),
       }),
       createElement(StatCard, {
-        tint: 'rgba(16,185,129,.14)', icon: ICO.play, label: t('stat.running'), value: String(stats.running),
-        sub: t('stat.pausedCount').replace('{n}', String(stats.paused)), subTone: 'dim',
+        icon: createElement('span', null, '⚡'),
+        label: t('stat.running'),
+        count: runningCount,
+        unit: t('stat.tasks'),
+        tone: 'accent',
+        onClick: () => setStatusFilter(statusFilter === 'running' ? null : 'running'),
       }),
       createElement(StatCard, {
-        tint: 'rgba(245,158,11,.16)', icon: ICO.bolt, label: t('stat.today'), value: String(stats.todayRuns),
-        sub: t('stat.totalRuns').replace('{n}', String(stats.totalRuns)), subTone: 'dim',
+        icon: createElement('span', null, '✓'),
+        label: t('stat.completed'),
+        count: completedCount,
+        unit: t('stat.tasks'),
+        tone: 'ok',
+        onClick: () => setStatusFilter(statusFilter === 'completed' ? null : 'completed'),
       }),
       createElement(StatCard, {
-        tint: 'rgba(239,68,68,.12)', icon: ICO.warn, label: t('stat.failRate'), value: `${stats.failRate}%`,
-        sub: t('stat.weekFails').replace('{n}', String(stats.weekFails)), subTone: stats.weekFails > 0 ? 'err' : 'ok',
+        icon: createElement('span', null, '📄'),
+        label: t('stat.logs'),
+        count: recentLogs.length,
+        unit: t('stat.recentLogs'),
+        tone: 'default',
+        onClick: () => setStatusFilter(statusFilter === 'logs' ? null : 'logs'),
       }),
     ),
 
@@ -272,22 +320,6 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       createElement(Btn, { kind: 'primary', onClick: () => setDetailId(null) }, '⊕ ' + t('board.new')),
     ),
 
-    // chip 筛选行
-    createElement(
-      'div',
-      { className: 'dsh-cb-chipbar' },
-      createElement(Chip, { label: t('chip.all'), count: stats.total, active: statusFilter === 'all', onClick: () => setStatusFilter('all') }),
-      createElement(Chip, { label: t('stat.running'), count: stats.running, active: statusFilter === 'running', onClick: () => setStatusFilter('running') }),
-      createElement(Chip, { label: t('chip.paused'), count: stats.paused, active: statusFilter === 'paused', onClick: () => setStatusFilter('paused') }),
-      createElement(Chip, { label: t('chip.failed'), count: stats.failedTasks, active: statusFilter === 'failed', onClick: () => setStatusFilter('failed') }),
-      createElement('div', { className: 'dsh-cb-spacer' }),
-      createElement(
-        Btn,
-        { onClick: () => setShowArchived((v) => !v) },
-        (showArchived ? '▾ ' : '▸ ') + t('board.archived') + ` (${archivedTasks.length})`,
-      ),
-    ),
-
     // 错误提示
     err !== null
       ? createElement(
@@ -298,21 +330,59 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         )
       : null,
 
-    // 任务表格
+    // 日志视图
+    statusFilter === 'logs'
+      ? createElement(
+          'div',
+          { className: 'dsh-cb-projects' },
+          recentLogs.length === 0
+            ? createElement('div', { className: 'dsh-cb-empty' }, t('board.feedEmpty'))
+            : recentLogs.map(({ task, exec }) =>
+                createElement(
+                  'div',
+                  { key: exec.id, className: 'dsh-cb-log-item' },
+                  createElement('div', { className: 'dsh-cb-log-head' },
+                    createElement('span', { className: 'dsh-cb-log-task' }, task.title),
+                    createElement(Badge, { tone: exec.status === 'success' ? 'ok' : exec.status === 'failed' ? 'err' : 'warn' },
+                      t(`st.${exec.status}`)),
+                  ),
+                  createElement('div', { className: 'dsh-cb-log-meta' },
+                    createElement('span', null, t(`exec.trigger.${exec.trigger}`)),
+                    createElement('span', null, fmtAgo(exec.endedAt ?? exec.startedAt)),
+                    exec.durationMs !== undefined ? createElement('span', null, fmtDur(exec.durationMs)) : null,
+                  ),
+                ),
+              ),
+        )
+      : null,
+
+    // 项目分组列表
     createElement(
       'div',
-      { className: 'dsh-cb-table' },
-      createElement(
-        'div',
-        { className: 'dsh-cb-thead' },
-        createElement('div', { className: 'dsh-cb-th dsh-cb-td-name' }, t('col.name')),
-        createElement('div', { className: 'dsh-cb-th' }, t('col.cron')),
-        createElement('div', { className: 'dsh-cb-th' }, t('col.status')),
-        createElement('div', { className: 'dsh-cb-th' }, t('col.lastRun')),
-        createElement('div', { className: 'dsh-cb-th dsh-cb-td-next' }, t('col.nextRun')),
-        createElement('div', { className: 'dsh-cb-th dsh-cb-td-actions' }, t('col.actions')),
-      ),
-      tableRows.length === 0 ? createElement('div', { className: 'dsh-cb-empty' }, t('board.empty')) : tableRows,
+      { className: 'dsh-cb-projects' },
+      projectGroups.length === 0
+        ? createElement('div', { className: 'dsh-cb-empty' }, t('board.empty'))
+        : projectGroups.map(([name, tasks], idx) => {
+            const filteredTasks = filtered.filter((task) => {
+              const wsId = task.pinned.workspaceId || '';
+              const ws = meta?.workspaces.find((w) => w.id === wsId);
+              return (ws?.title ?? t('board.other')) === name;
+            });
+            return createElement(ProjectGroup, {
+              key: name,
+              name,
+              color: projectColors[idx % projectColors.length] ?? '#4b6bfb',
+              count: filteredTasks.length,
+              tasks: filteredTasks,
+              expanded: expandedProjects.has(name) || idx === 0,
+              onToggle: () => toggleProject(name),
+              onTaskClick: (task) => setDetailId(task.id),
+              onRun: (task) => void props.rpc('cron-board/task-run', { id: task.id }).then(() => void load()),
+              onTestPush: (task) => void props.rpc('cron-board/push-test', { id: task.id }).then(() => void load()),
+              onDelete: (task) => void props.rpc('cron-board/task-delete', { id: task.id }).then(() => void load()),
+              onToggleEnabled: (task) => void props.rpc('cron-board/task-toggle', { id: task.id, enabled: task.enabled === false }).then(() => void load()),
+            });
+          }),
     ),
 
     // 归档视图
