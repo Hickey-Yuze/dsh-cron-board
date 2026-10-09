@@ -23,7 +23,10 @@ import { PANEL_ID } from './panel-icon.js';
 import { makeRpc } from './rpc.js';
 import { SettingsPanel } from './settings.js';
 
-export const inject = ['slots', 'layout', 'locale', 'sessions'];
+// 铁律（AGENTS.md）：client inject 保持最小集——inject 里每个名字都是一次服务等待，
+// 声明了不存在/晚到的服务会挂起整个 client 半区，侧栏图标因此不出现（宿主 2.0.17 实测复发）。
+// sessions 仅服务「打开会话」按钮（可降级），不进 inject，apply 内安全探测。
+export const inject = ['slots', 'layout', 'locale'];
 
 /** 日历时钟图标（与原 PanelIcon 同款）。 */
 const ICON_SVG =
@@ -167,9 +170,15 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
 
 export function apply(ctx: CronBoardClientCtx): void {
   const rpc = makeRpc();
-  const sessions = (ctx as unknown as { get?(k: string): unknown }).get?.('sessions') as
-    | { open?(sessionId: string): unknown }
-    | undefined;
+  // sessions 不在 inject 里（会挂起 client 半区）：安全探测，拿不到就降级隐藏「打开会话」。
+  let sessions: { open?(sessionId: string): unknown } | undefined;
+  try {
+    sessions = (ctx as unknown as { get?(k: string): unknown }).get?.('sessions') as
+      | { open?(sessionId: string): unknown }
+      | undefined;
+  } catch {
+    sessions = undefined;
+  }
   initI18n(ctx);
   ensureThemeStyle();
 
