@@ -7,12 +7,14 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { cronNextRun, isValidCron } from './cron.js';
 import type { CronBoardConfig } from './config.js';
+import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES } from './contract.js';
 import type {
   BoardSnapshot,
   MetaView,
   PermissionPreset,
   PushTargetRef,
   SettingsView,
+  TaskBadge,
   TaskDraft,
   TaskRow,
   TaskTag,
@@ -50,22 +52,26 @@ interface WebServerLike {
 const API_PREFIX = '/api/cron-board';
 const BODY_MAX = 8 * 1024 * 1024;
 
-/** 账本任务集 → 去重会话 id（cron-board/session-ids 核心；纯函数便于冒烟）。 */
-export function collectSessionIds(
-  tasks: readonly { activeSessionId?: string; executions?: readonly { sessionId: string }[] }[],
-): string[] {
-  const ids = new Set<string>();
+/**
+ * 账本任务集 → 会话 id → 所属任务徽标（cron-board/session-ids 核心；纯函数便于冒烟）。
+ * 值为 null = 任务无自定义徽标（默认时钟）；同一会话被多任务引用时后写覆盖（历史极少见，无语义影响）。
+ */
+export function collectSessionMap(
+  tasks: readonly { activeSessionId?: string; executions?: readonly { sessionId: string }[]; badge?: TaskBadge }[],
+): Record<string, TaskBadge | null> {
+  const map: Record<string, TaskBadge | null> = {};
   for (const task of tasks) {
+    const badge = task.badge ?? null;
     if (typeof task.activeSessionId === 'string' && task.activeSessionId !== '') {
-      ids.add(task.activeSessionId);
+      map[task.activeSessionId] = badge;
     }
     for (const exec of task.executions ?? []) {
       if (typeof exec.sessionId === 'string' && exec.sessionId !== '') {
-        ids.add(exec.sessionId);
+        map[exec.sessionId] = badge;
       }
     }
   }
-  return [...ids];
+  return map;
 }
 
 export interface RpcDeps {
@@ -150,6 +156,40 @@ export function normalizeTags(raw: unknown): TaskTag[] | undefined {
 }
 
 /** 载荷校验 + 归一（导出供冒烟测试直接断言）。 */
+const BADGE_B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** 会话徽标校验：undefined=不变；null=恢复默认；emoji≤16 字符（组合 emoji 簇）；icon/image 走白名单。 */
+export function normalizeBadge(raw: unknown): TaskBadge | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  const b = asRecord(raw);
+  if (b.kind === 'emoji') {
+    const value = asString(b.value, 'badge.value', 16);
+    if (value.trim() === '') fail('bad-request', 'emoji 徽标不能为空');
+    return { kind: 'emoji', value };
+  }
+  if (b.kind === 'icon') {
+    const value = asString(b.value, 'badge.value', 32);
+    if (!(value in BADGE_ICONS)) fail('bad-request', `未知预设图标: ${value}`);
+    if (b.color === undefined || b.color === null) return { kind: 'icon', value };
+    const color = asString(b.color, 'badge.color', 16);
+    if (!(color in BADGE_COLORS)) fail('bad-request', `未知徽标颜色: ${color}`);
+    return { kind: 'icon', value, color };
+  }
+  if (b.kind === 'image') {
+    const mediaType = asString(b.mediaType, 'badge.mediaType', 48);
+    if (!(BADGE_IMAGE_TYPES as readonly string[]).includes(mediaType)) {
+      fail('bad-request', `不支持的图标格式: ${mediaType}`);
+    }
+    const data = asString(b.data, 'badge.data', 90000);
+    if (!BADGE_B64_RE.test(data)) fail('bad-request', '图标 data 必须是规范 base64');
+    // base64 → 原始字节（3/4 率）不得超过 64KB。
+    if (Math.floor((data.length * 3) / 4) > BADGE_IMAGE_MAX_BYTES) fail('bad-request', '图标文件超过 64KB 上限');
+    return { kind: 'image', mediaType, data };
+  }
+  fail('bad-request', 'badge.kind 必须是 emoji | icon | image');
+}
+
 export function normalizeDraft(raw: unknown): TaskDraft {
   const r = asRecord(raw);
   const id = r.id === undefined || r.id === null || r.id === '' ? undefined : asId(r.id, 'id');
@@ -195,7 +235,8 @@ export function normalizeDraft(raw: unknown): TaskDraft {
     if (r.imageRefs.length > 4) fail('bad-request', '任务图片最多 4 张');
     imageRefs = r.imageRefs.map((raw: unknown, idx: number) => asRecord(raw) as unknown as Record<string, unknown>);
   }
-  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags, images, imageRefs };
+  const badge = normalizeBadge(r.badge);
+  return { id, title, prompt, cron, enabled, pinned, push, reuseSession, tags, images, imageRefs, badge };
 }
 
 /** 组装快照（存储行 + 派生标志），所有变更端点统一返回。 */
@@ -321,8 +362,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
 
       case 'cron-board/session-ids': {
         // 会话渠道徽标兜底（client/src/channelBadge.tsx）：账本内全部 cron-board
-        // 会话 id（activeSessionId + 历次执行记录），去重后供客户端集合判定。
-        return { ids: collectSessionIds(deps.ledger.snapshot.tasks) };
+        // 会话 id（activeSessionId + 历次执行记录）→ 所属任务徽标（null=默认时钟）。
+        return { map: collectSessionMap(deps.ledger.snapshot.tasks) };
       }
 
       case 'cron-board/meta': {
@@ -401,6 +442,10 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             if (draft.reuseSession !== undefined) existing.reuseSession = draft.reuseSession;
             if (draft.tags !== undefined) existing.tags = draft.tags;
             if (imageRefs !== undefined) existing.promptImageRefs = imageRefs;
+            if (draft.badge !== undefined) {
+              if (draft.badge === null) delete existing.badge;
+              else existing.badge = draft.badge;
+            }
             // 确认门重武装：指纹变化即失效
             if (existing.confirm && existing.confirm.fingerprint !== confirmFingerprint(existing)) {
               existing.confirm = null;
@@ -423,6 +468,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               lastPushTest: null,
               reuseSession: draft.reuseSession ?? true,
               tags: draft.tags ?? [],
+              ...(draft.badge ? { badge: draft.badge } : {}),
               ...(imageRefs !== undefined && imageRefs.length > 0 ? { promptImageRefs: imageRefs } : {}),
               createdAt: now,
               updatedAt: now,

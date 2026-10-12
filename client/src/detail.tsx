@@ -4,7 +4,9 @@
  */
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { BoardSnapshot, MetaView, TaskTag, TaskView } from '../../src/contract.js';
+import type { BoardSnapshot, MetaView, TaskBadge, TaskTag, TaskView } from '../../src/contract.js';
+import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES } from '../../src/contract.js';
+import { CRON_CHANNEL_COLOR, invalidateLedgerMap } from './channelBadge.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
 import { lang, t } from './i18n.js';
@@ -85,6 +87,31 @@ function pushOptions(meta: MetaView | null): { value: string; label: string }[] 
   return options;
 }
 
+/** 徽标预览（编辑框内 20px 所见即所得；与侧边栏渲染同构）。 */
+function BadgePreview(props: { badge: TaskBadge | null }): ReactElement {
+  const b = props.badge;
+  if (b !== null && b.kind === 'emoji') {
+    return createElement('span', { style: { fontSize: 18, lineHeight: 1 } }, b.value);
+  }
+  if (b !== null && b.kind === 'image') {
+    return createElement('img', {
+      src: 'data:' + b.mediaType + ';base64,' + b.data,
+      alt: '',
+      style: { width: 20, height: 20, objectFit: 'contain', verticalAlign: '-5px' },
+    });
+  }
+  const paths = (b !== null && b.kind === 'icon' ? (BADGE_ICONS[b.value] ?? BADGE_ICONS.clock) : BADGE_ICONS.clock)!;
+  const color =
+    b !== null && b.kind === 'icon' && b.color !== undefined && b.color in BADGE_COLORS
+      ? (BADGE_COLORS[b.color] ?? CRON_CHANNEL_COLOR)
+      : CRON_CHANNEL_COLOR;
+  return createElement(
+    'svg',
+    { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: color, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', style: { verticalAlign: '-5px' } },
+    paths.map((d, i) => createElement('path', { d, key: i })),
+  );
+}
+
 export function DetailModal(props: {
   rpc: RpcFn;
   snapshot: BoardSnapshot | null;
@@ -116,6 +143,7 @@ export function DetailModal(props: {
   // 任务图片编辑：undefined=不变（不传字段）；[]=清空；[...]=替换。base64 存 dataUrl 供预览。
   const [images, setImages] = useState<Array<{ name?: string; mediaType: string; data: string }> | undefined>(undefined);
   const [existingImageCount] = useState(src?.promptImageRefs?.length ?? 0);
+  const [badge, setBadge] = useState<TaskBadge | null>(src?.badge ?? null);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -176,9 +204,11 @@ export function DetailModal(props: {
             : src?.promptImageRefs && src.promptImageRefs.length > 0
               ? { imageRefs: src.promptImageRefs }
               : {}),
+          ...(badge !== (src?.badge ?? null) ? { badge } : {}),
         },
       });
       if (r.ok) {
+        invalidateLedgerMap(); // 侧边栏已挂载徽标即时重拉刷新
         props.onChanged();
         props.onClose();
       } else {
@@ -558,6 +588,106 @@ export function DetailModal(props: {
                     )
                   : null,
                 createElement('span', { className: 'dsh-cb-hint' }, t('f.imagesHint')),
+              ),
+            )
+          : null,
+        !archived
+          ? createElement(
+              Field,
+              { label: t('f.badge') },
+              createElement(
+                'div',
+                { className: 'dsh-cb-tagrow' },
+                // 预览（所见即所得）
+                createElement(
+                  'span',
+                  { className: 'dsh-cb-tagitem', style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28 } },
+                  createElement(BadgePreview, { badge }),
+                ),
+                // emoji 自由输入（清空=恢复默认）
+                createElement('input', {
+                  value: badge !== null && badge.kind === 'emoji' ? badge.value : '',
+                  placeholder: '😀',
+                  maxLength: 8,
+                  onChange: (e: { target?: { value?: string } }) => {
+                    const v = e?.target?.value ?? '';
+                    setBadge(v.trim() === '' ? null : { kind: 'emoji', value: v });
+                  },
+                  style: { width: 72, font: 'inherit', fontSize: 14 },
+                }),
+                // 预设图标
+                createElement(Select, {
+                  value: badge !== null && badge.kind === 'icon' ? badge.value : '',
+                  onChange: (v: string) => {
+                    if (v === '') setBadge(null);
+                    else setBadge({ kind: 'icon', value: v, color: badge !== null && badge.kind === 'icon' ? badge.color : undefined });
+                  },
+                  options: [{ value: '', label: t('f.badgeDefault') }].concat(
+                    Object.keys(BADGE_ICONS).map((k) => ({ value: k, label: k })),
+                  ),
+                }),
+                // 色板（点色点=图标模式+用色；图标未选时默认 clock）
+                ...Object.entries(BADGE_COLORS).map(([key, color]) =>
+                  createElement('button', {
+                    key,
+                    type: 'button',
+                    title: key,
+                    onClick: () =>
+                      setBadge({ kind: 'icon', value: badge !== null && badge.kind === 'icon' ? badge.value : 'clock', color: key }),
+                    style: {
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      padding: 0,
+                      cursor: 'pointer',
+                      background: color,
+                      border: '2px solid ' + (badge !== null && badge.kind === 'icon' && badge.color === key ? color : 'transparent'),
+                      outline: '1px solid var(--dsh-cb-border)',
+                    },
+                  }),
+                ),
+                // 上传图标文件
+                createElement('input', {
+                  type: 'file',
+                  accept: 'image/png,image/svg+xml,image/webp,image/x-icon,.ico',
+                  style: { fontSize: 12, maxWidth: 190 },
+                  onChange: (e: { target?: { files?: FileList | null; value?: string } }) => {
+                    const file = (e?.target?.files ?? [])[0];
+                    if (e.target) e.target.value = '';
+                    if (!file) return;
+                    if (file.size > BADGE_IMAGE_MAX_BYTES) {
+                      setErr(t('f.badgeTooBig'));
+                      return;
+                    }
+                    const mt =
+                      file.type !== '' && (BADGE_IMAGE_TYPES as readonly string[]).includes(file.type)
+                        ? file.type
+                        : file.name.toLowerCase().endsWith('.ico')
+                          ? 'image/x-icon'
+                          : '';
+                    if (mt === '') {
+                      setErr(t('f.badgeBadType'));
+                      return;
+                    }
+                    void (async () => {
+                      try {
+                        const dataUrl = await new Promise<string>((resolve, reject) => {
+                          const fr = new FileReader();
+                          fr.onload = () => resolve(String(fr.result));
+                          fr.onerror = () => reject(fr.error);
+                          fr.readAsDataURL(file);
+                        });
+                        setBadge({ kind: 'image', mediaType: mt, data: dataUrl.slice(dataUrl.indexOf(',') + 1) });
+                        setErr(null);
+                      } catch {
+                        setErr(t('f.badgeReadFail'));
+                      }
+                    })();
+                  },
+                }),
+                // 清除（恢复默认时钟）
+                badge !== null ? createElement(Btn, { kind: 'ghost', onClick: () => setBadge(null) }, t('f.badgeClear')) : null,
+                createElement('span', { className: 'dsh-cb-hint' }, t('f.badgeHint')),
               ),
             )
           : null,

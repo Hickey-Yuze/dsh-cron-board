@@ -14,7 +14,7 @@ import { LedgerStore, type BoardTask } from './ledger.js';
 import { extractJsonObject } from './parse.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
-import { collectSessionIds, normalizeDraft, normalizeTags } from './rpc.js';
+import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeTags } from './rpc.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
 import { newSessionId, newTaskId } from './util.js';
 
@@ -24,6 +24,9 @@ function ok(cond: unknown, msg: string): void {
 }
 function eq<T>(a: T, b: T, msg: string): void {
   assert.equal(a, b, `#${section} ${msg}`);
+}
+function throws(fn: () => void, msg: string): void {
+  assert.throws(fn, Error, `#${section} ${msg}`);
 }
 
 function makeTask(patch: Partial<TaskRow> = {}): TaskRow {
@@ -286,14 +289,26 @@ async function main(): Promise<void> {
   // ── 会话渠道徽标（channelBadge）数据面 ──
   ok(newSessionId().startsWith('cron-'), '新会话 id 带 cron- 前缀（旧 hex id 兼容）');
   eq(
-    collectSessionIds([
-      { activeSessionId: 'cron-aa', executions: [{ sessionId: 'cron-bb' }, { sessionId: 'cron-aa' }] },
-      { executions: [{ sessionId: '' }] },
-      {},
-    ]).join(','),
-    'cron-aa,cron-bb',
-    'session-ids 聚合去重+滤空',
+    JSON.stringify(
+      collectSessionMap([
+        { activeSessionId: 'cron-aa', executions: [{ sessionId: 'cron-bb' }, { sessionId: 'cron-aa' }], badge: { kind: 'emoji', value: '📊' } },
+        { executions: [{ sessionId: '' }] },
+        {},
+      ]),
+    ),
+    JSON.stringify({ 'cron-aa': { kind: 'emoji', value: '📊' }, 'cron-bb': { kind: 'emoji', value: '📊' } }),
+    'session-ids → {sid: badge} 映射（去重滤空、badge 随任务）',
   );
+  // badge 校验：undefined=不变 / null=清除 / emoji 超长拒 / icon 白名单拒 / image 格式与体积拒
+  eq(JSON.stringify(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false, badge: { kind: 'emoji', value: '📊' } }).badge), JSON.stringify({ kind: 'emoji', value: '📊' }), 'badge emoji 通过');
+  eq(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false, badge: null }).badge, null, 'badge null=恢复默认');
+  eq(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false }).badge, undefined, 'badge 缺省=不变');
+  throws(() => normalizeBadge({ kind: 'emoji', value: 'x'.repeat(17) }), 'emoji 超长拒');
+  throws(() => normalizeBadge({ kind: 'icon', value: 'nope' }), '未知预设图标拒');
+  throws(() => normalizeBadge({ kind: 'icon', value: 'clock', color: 'nope' }), '未知颜色拒');
+  throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/bmp', data: 'aGk=' }), '不支持格式拒');
+  throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/png', data: 'not base64!' }), '坏 base64 拒');
+  throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/png', data: 'A'.repeat(90001) }), '图标超 64KB 拒');
   const withTags = normalizeDraft({
     title: 'x',
     prompt: 'p',
