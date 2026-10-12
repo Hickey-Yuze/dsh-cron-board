@@ -83,36 +83,33 @@ const CSS = `
   --dsh-cb-radius-xl: 20px;
 }
 
-/* 暗色自持变量：宿主运行时暗色 CSS 存在部分 alias 缺失（实测 bg-layer-1 有而
- * bg-layer-2/label-primary 无 → 弹层深色正确但输入框退到亮色 fallback）。
- * 检测到宿主暗色属性时全部字面量自持，不再依赖宿主 alias 传导。 */
-body[data-ds-dark-theme] .dsh-cb-root,
-body[data-ds-dark-theme] .dsh-cb-modal,
-body[data-ds-dark-theme] .dsh-cb-icon-btn,
-body[data-ds-dark-theme] .dsh-cb-pop {
-  --dsh-cb-bg: #161619;
-  --dsh-cb-bg-2: #1d1d21;
-  --dsh-cb-bg-3: #222227;
-  --dsh-cb-card: #1f1f24;
-  --dsh-cb-card-2: #27272e;
-  --dsh-cb-card-3: #2d2d35;
-  --dsh-cb-border: rgba(255, 255, 255, 0.09);
-  --dsh-cb-border-2: rgba(255, 255, 255, 0.18);
-  --dsh-cb-text: #e9e9ee;
-  --dsh-cb-dim: #9a9aa5;
-  --dsh-cb-accent: #5b7cfa;
-  --dsh-cb-accent-light: rgba(91, 124, 250, 0.28);
-  --dsh-cb-ok: #34d399;
-  --dsh-cb-ok-bg: rgba(52, 211, 153, 0.12);
-  --dsh-cb-warn: #fbbf24;
-  --dsh-cb-warn-bg: rgba(251, 191, 36, 0.12);
-  --dsh-cb-err: #f87171;
-  --dsh-cb-err-bg: rgba(248, 113, 113, 0.12);
-  --dsh-cb-hover: rgba(255, 255, 255, 0.06);
-  --dsh-cb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --dsh-cb-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --dsh-cb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --dsh-cb-shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.55);
+/* 弹层固定亮色：编辑任务框不跟随宿主主题（用户宿主 body 带系统深色属性但主观
+ * 使用亮色；此前 alias 传导在宿主暗色 CSS 下部分缺失导致白底输入框混搭）。
+ * 字面量锚定，specificity 与上方变量块同组、后定义者胜。 */
+.dsh-cb-modal, .dsh-cb-pop {
+  --dsh-cb-bg: #fafafa;
+  --dsh-cb-bg-2: #f6f6f8;
+  --dsh-cb-bg-3: #eef0f4;
+  --dsh-cb-card: #ffffff;
+  --dsh-cb-card-2: #f6f6f8;
+  --dsh-cb-card-3: #eef0f4;
+  --dsh-cb-border: rgba(20, 20, 30, 0.08);
+  --dsh-cb-border-2: rgba(20, 20, 30, 0.16);
+  --dsh-cb-text: #1c1c22;
+  --dsh-cb-dim: #6d6d7a;
+  --dsh-cb-accent: #4b6bfb;
+  --dsh-cb-accent-light: rgba(75, 107, 251, 0.2);
+  --dsh-cb-ok: #10b981;
+  --dsh-cb-ok-bg: rgba(16, 185, 129, 0.1);
+  --dsh-cb-warn: #f59e0b;
+  --dsh-cb-warn-bg: rgba(245, 158, 11, 0.1);
+  --dsh-cb-err: #ef4444;
+  --dsh-cb-err-bg: rgba(239, 68, 68, 0.1);
+  --dsh-cb-hover: rgba(127, 127, 140, 0.08);
+  --dsh-cb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --dsh-cb-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --dsh-cb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --dsh-cb-shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.16);
 }
 
 /* ── 侧栏入口图标 ── */

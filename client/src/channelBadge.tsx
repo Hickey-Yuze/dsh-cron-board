@@ -109,17 +109,27 @@ export function ChannelBadge(props: { sessionId?: string; rpc?: RpcFn }): ReactE
 
   // B1 生命周期互斥：挂载=空闲（清属性）；unmount=宿主用状态点替换了 seat（打属性，
   // ::before 接管行首）。行容器缺失时静默退化（仅运行中徽标缺失，seat 仍正常）。
+  // 同时做视觉对齐：官方 slot 在 title 之前（16px 格 + title 4px margin），而 dsh-im
+  // 等渠道徽标注入在 title 内部——seat 图标右移 20px 补到 title 内容起点，title 推
+  // 20px 防重叠；卸载即还原，结构变更防御性跳过（children[1] 非 span 不动）。
   useEffect(() => {
     let row: Element | null = null;
+    let titleEl: HTMLElement | null = null;
     try {
       row = rowRef.current?.closest(ROW_SELECTOR) ?? null;
       row?.removeAttribute(RUNNING_ATTR);
+      const second = row?.children[1];
+      if (second instanceof HTMLElement && second.tagName === 'SPAN') {
+        titleEl = second;
+        titleEl.style.paddingLeft = '20px';
+      }
     } catch {
       /* 宿主 DOM 变更：退化，不报错 */
     }
     return () => {
       try {
         row?.setAttribute(RUNNING_ATTR, '');
+        if (titleEl !== null) titleEl.style.paddingLeft = '';
       } catch {
         /* 同上 */
       }
@@ -133,7 +143,7 @@ export function ChannelBadge(props: { sessionId?: string; rpc?: RpcFn }): ReactE
     <span
       ref={rowRef}
       title={t('badge.title')}
-      style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', width: 16, height: 16, marginRight: 6 }}
+      style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', width: 16, height: 16, marginLeft: 20, marginRight: 0 }}
     >
       <svg
         viewBox="0 0 24 24"
