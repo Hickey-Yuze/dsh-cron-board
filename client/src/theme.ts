@@ -83,10 +83,10 @@ const CSS = `
   --dsh-cb-radius-xl: 20px;
 }
 
-/* 弹层固定亮色：编辑任务框不跟随宿主主题（用户宿主 body 带系统深色属性但主观
- * 使用亮色；此前 alias 传导在宿主暗色 CSS 下部分缺失导致白底输入框混搭）。
+/* 全插件固定亮色：不跟随宿主主题（用户宿主 body 带系统深色属性但主观使用
+ * 亮色；此前 alias 传导在宿主暗色 CSS 下部分缺失导致白底输入框混搭）。
  * 字面量锚定，specificity 与上方变量块同组、后定义者胜。 */
-.dsh-cb-modal, .dsh-cb-pop {
+.dsh-cb-root, .dsh-cb-modal, .dsh-cb-icon-btn, .dsh-cb-pop {
   --dsh-cb-bg: #fafafa;
   --dsh-cb-bg-2: #f6f6f8;
   --dsh-cb-bg-3: #eef0f4;

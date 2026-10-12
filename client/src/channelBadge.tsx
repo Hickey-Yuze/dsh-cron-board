@@ -1,16 +1,19 @@
 /**
- * 会话渠道徽标（docs/PRD-会话渠道徽标.md 落地 · cron 渠道）：
+ * 会话渠道徽标（docs/PRD-会话渠道徽标.md 落地 · cron 渠道 · v3 title 注入）：
  *
- * 1. seat 徽标：注册宿主 `sidebar.session.row.leading`（行首只读 seat，{ sessionId }）。
- *    命中判定：sessionId 带 `cron-` 前缀（新会话，src/util.ts newSessionId）∨ 在
- *    账本 sessionId 集合内（cron-board/session-ids 端点，兜底存量会话）。未命中
- *    返回 null（零渲染开销）。渲染 16px 琥珀日历时钟 + hover「定时任务会话」。
- * 2. 运行中可见（PRD B1 变体，零常驻 observer）：宿主在会话运行中用状态点替换行首
- *    seat —— 本组件 unmount 时给所在行打 data-cb-running，注入 CSS 的 ::before 在
- *    行首画同款徽标（mask 内联 SVG，无外链）；组件重新挂载（恢复空闲）时移除属性。
- *    生命周期互斥：空闲=seat 徽标，运行中=::before 徽标，绝不双标。
- * 3. 不改任何会话标题文本；全部 DOM 操作 try/catch 兜底——宿主结构变更最多徽标
- *    不显示，绝不报错；禁用插件即全部恢复。
+ * 对齐策略（v2 教训：seat slot 内右移被宿主 justify-content:center 吃掉一半，
+ * 各行表现不一致）：与 dsh-im 渠道徽标同构——把徽标节点直接插入 title span
+ * 文字流开头（row.children[1]），同 DOM 同 CSS 流 → 与微信徽标天然对齐。
+ *
+ * 1. seat 组件仍注册宿主 `sidebar.session.row.leading`，但只作生命周期锚点
+ *    （渲染 display:none 占位，slot 格子留空）；挂载时向 title 注入 15px 琥珀
+ *    日历时钟（幂等，.dsh-cb-title-badge 标记），卸载不删除——运行中宿主用
+ *    状态点替换 seat（PRD G5）时 title 徽标仍常驻可见，与状态点不同位不冲突，
+ *    无需 B1/::before 互斥。插件禁用/页面刷新时宿主重渲染 title span 自然消失。
+ * 2. 命中判定：sessionId 带 `cron-` 前缀（新会话）∨ 账本 sessionId 集合
+ *    （cron-board/session-ids 端点兜底存量）。未命中零注入。
+ * 3. 不改任何会话标题文本；全部 DOM 操作 try/catch 兜底——宿主结构变更最多
+ *    徽标不显示，绝不报错。
  */
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -19,7 +22,7 @@ import type { RpcFn } from './rpc.js';
 
 export const CRON_CHANNEL_COLOR = '#F59E0B';
 export const BADGE_STYLE_ID = 'dsh-cron-board-badge-style';
-export const RUNNING_ATTR = 'data-cb-running';
+export const BADGE_CLASS = 'dsh-cb-title-badge';
 /** 行容器选择器（PRD 初值；宿主侧栏行以 data-row-key="session:<id>" 标识）。 */
 export const ROW_SELECTOR = '[data-row-key^="session:"]';
 
@@ -49,7 +52,7 @@ export function fetchLedgerIds(rpc: RpcFn): Promise<Set<string>> {
   return ledgerPromise;
 }
 
-/* ── 一次性样式注入（幂等） ── */
+/* ── 一次性样式注入（幂等）：title 内徽标类 ── */
 
 export function ensureBadgeStyle(): void {
   if (typeof document === 'undefined') return;
@@ -60,14 +63,13 @@ export function ensureBadgeStyle(): void {
   const style = document.createElement('style');
   style.id = BADGE_STYLE_ID;
   style.textContent = `
-${ROW_SELECTOR}[${RUNNING_ATTR}]::before {
+.${BADGE_CLASS} {
   content: '';
   display: inline-block;
   flex: 0 0 auto;
-  align-self: center;
-  width: 14px;
-  height: 14px;
-  margin-right: 4px;
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
   vertical-align: -2px;
   background-color: ${CRON_CHANNEL_COLOR};
   -webkit-mask: url("data:image/svg+xml,${maskSvg}") no-repeat center / contain;
@@ -80,14 +82,14 @@ ${ROW_SELECTOR}[${RUNNING_ATTR}]::before {
   }
 }
 
-/* ── seat 徽标组件（宿主 renderSlot 传 { sessionId }，inject 传 { rpc }） ── */
+/* ── seat 锚点组件（宿主 renderSlot 传 { sessionId }，inject 传 { rpc }） ── */
 
-export function ChannelBadge(props: { sessionId?: string; rpc?: RpcFn }): ReactElement | null {
+export function ChannelBadge(props: { sessionId?: string; rpc?: RpcFn }): ReactElement {
   const { sessionId, rpc } = props;
   const rowRef = useRef<HTMLSpanElement | null>(null);
   const [ledgerHit, setLedgerHit] = useState(false);
 
-  // 命中判定：前缀即时返回；账本兜底异步补判（存量 hex 会话）。
+  // 命中判定：前缀即时命中；账本兜底异步补判（存量 hex 会话）。
   useEffect(() => {
     setLedgerHit(false);
     if (
@@ -107,62 +109,28 @@ export function ChannelBadge(props: { sessionId?: string; rpc?: RpcFn }): ReactE
     };
   }, [sessionId, rpc]);
 
-  // B1 生命周期互斥：挂载=空闲（清属性）；unmount=宿主用状态点替换了 seat（打属性，
-  // ::before 接管行首）。行容器缺失时静默退化（仅运行中徽标缺失，seat 仍正常）。
-  // 同时做视觉对齐：官方 slot 在 title 之前（16px 格 + title 4px margin），而 dsh-im
-  // 等渠道徽标注入在 title 内部——seat 图标右移 20px 补到 title 内容起点，title 推
-  // 20px 防重叠；卸载即还原，结构变更防御性跳过（children[1] 非 span 不动）。
+  // title 注入：命中即向 row.children[1]（title span）开头插入徽标节点。
+  // 幂等（.dsh-cb-title-badge 已存在跳过）；卸载不删除——运行中 seat 被状态点
+  // 替换后徽标仍随 title 常驻（G5），宿主重渲染 title 时自然回收。
   useEffect(() => {
-    let row: Element | null = null;
-    let titleEl: HTMLElement | null = null;
+    if (sessionId === undefined || sessionId === '') return;
+    if (!isCronSession(sessionId) && !ledgerHit) return;
     try {
-      row = rowRef.current?.closest(ROW_SELECTOR) ?? null;
-      row?.removeAttribute(RUNNING_ATTR);
+      const row = rowRef.current?.closest(ROW_SELECTOR) ?? null;
       const second = row?.children[1];
       if (second instanceof HTMLElement && second.tagName === 'SPAN') {
-        titleEl = second;
-        titleEl.style.paddingLeft = '20px';
+        if (second.querySelector(`.${BADGE_CLASS}`) === null) {
+          const badge = document.createElement('span');
+          badge.className = BADGE_CLASS;
+          badge.setAttribute('aria-hidden', 'true');
+          second.insertBefore(badge, second.firstChild);
+        }
       }
     } catch {
       /* 宿主 DOM 变更：退化，不报错 */
     }
-    return () => {
-      try {
-        row?.setAttribute(RUNNING_ATTR, '');
-        if (titleEl !== null) titleEl.style.paddingLeft = '';
-      } catch {
-        /* 同上 */
-      }
-    };
-  }, [sessionId]);
+  }, [sessionId, ledgerHit]);
 
-  if (sessionId === undefined || sessionId === '') return null;
-  if (!isCronSession(sessionId) && !ledgerHit) return null;
-
-  return (
-    <span
-      ref={rowRef}
-      title={t('badge.title')}
-      style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', width: 16, height: 16, marginLeft: 20, marginRight: 0 }}
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width={16}
-        height={16}
-        fill="none"
-        stroke={CRON_CHANNEL_COLOR}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d={CLOCK_PATHS[0]} />
-        <path d={CLOCK_PATHS[1]} />
-        <path d={CLOCK_PATHS[2]} />
-        <path d={CLOCK_PATHS[3]} />
-        <circle cx="17" cy="17" r="5" />
-        <path d={CLOCK_PATHS[4]} />
-      </svg>
-    </span>
-  );
+  // slot 格子内只渲染隐形锚点（用于 closest 定位行容器），格子保持留空。
+  return <span ref={rowRef} style={{ display: 'none' }} aria-hidden="true" />;
 }
