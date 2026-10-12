@@ -83,6 +83,38 @@ const CSS = `
   --dsh-cb-radius-xl: 20px;
 }
 
+/* 暗色自持变量：宿主运行时暗色 CSS 存在部分 alias 缺失（实测 bg-layer-1 有而
+ * bg-layer-2/label-primary 无 → 弹层深色正确但输入框退到亮色 fallback）。
+ * 检测到宿主暗色属性时全部字面量自持，不再依赖宿主 alias 传导。 */
+body[data-ds-dark-theme] .dsh-cb-root,
+body[data-ds-dark-theme] .dsh-cb-modal,
+body[data-ds-dark-theme] .dsh-cb-icon-btn,
+body[data-ds-dark-theme] .dsh-cb-pop {
+  --dsh-cb-bg: #161619;
+  --dsh-cb-bg-2: #1d1d21;
+  --dsh-cb-bg-3: #222227;
+  --dsh-cb-card: #1f1f24;
+  --dsh-cb-card-2: #27272e;
+  --dsh-cb-card-3: #2d2d35;
+  --dsh-cb-border: rgba(255, 255, 255, 0.09);
+  --dsh-cb-border-2: rgba(255, 255, 255, 0.18);
+  --dsh-cb-text: #e9e9ee;
+  --dsh-cb-dim: #9a9aa5;
+  --dsh-cb-accent: #5b7cfa;
+  --dsh-cb-accent-light: rgba(91, 124, 250, 0.28);
+  --dsh-cb-ok: #34d399;
+  --dsh-cb-ok-bg: rgba(52, 211, 153, 0.12);
+  --dsh-cb-warn: #fbbf24;
+  --dsh-cb-warn-bg: rgba(251, 191, 36, 0.12);
+  --dsh-cb-err: #f87171;
+  --dsh-cb-err-bg: rgba(248, 113, 113, 0.12);
+  --dsh-cb-hover: rgba(255, 255, 255, 0.06);
+  --dsh-cb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --dsh-cb-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --dsh-cb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --dsh-cb-shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
 /* ── 侧栏入口图标 ── */
 .dsh-cb-icon-btn {
   display: flex; align-items: center; justify-content: center;

@@ -219,7 +219,7 @@ export function apply(ctx: CronBoardClientCtx): void {
   ensureBadgeStyle();
   ctx.slots.inject('sidebar.session.row.leading', () => {
     return ctx.slots.register(
-      { name: 'sidebar.session.row.leading', key: 'cron-board-badge', inject: () => ({ rpc }) },
+      { name: 'sidebar.session.row.leading', id: 'cron-board-badge', order: 10, inject: () => ({ rpc }) },
       ChannelBadge,
     );
   });
