@@ -56,15 +56,11 @@ export function fetchLedgerIds(rpc: RpcFn): Promise<Set<string>> {
 
 export function ensureBadgeStyle(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById(BADGE_STYLE_ID) !== null) return;
   const maskSvg = encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${CLOCK_PATHS[0]}"/><path d="${CLOCK_PATHS[1]}"/><path d="${CLOCK_PATHS[2]}"/><path d="${CLOCK_PATHS[3]}"/><circle cx="17" cy="17" r="5"/><path d="${CLOCK_PATHS[4]}"/></svg>`,
   );
-  const style = document.createElement('style');
-  style.id = BADGE_STYLE_ID;
-  style.textContent = `
+  const css = `
 .${BADGE_CLASS} {
-  content: '';
   display: inline-block;
   flex: 0 0 auto;
   width: 15px;
@@ -75,8 +71,15 @@ export function ensureBadgeStyle(): void {
   -webkit-mask: url("data:image/svg+xml,${maskSvg}") no-repeat center / contain;
   mask: url("data:image/svg+xml,${maskSvg}") no-repeat center / contain;
 }`;
+  let style = document.getElementById(BADGE_STYLE_ID) as HTMLStyleElement | null;
   try {
-    document.head.appendChild(style);
+    if (style === null) {
+      style = document.createElement('style');
+      style.id = BADGE_STYLE_ID;
+      document.head.appendChild(style);
+    }
+    // 热更新安全：内容比对更新，旧徽标样式不再永久占坑。
+    if (style.textContent !== css) style.textContent = css;
   } catch {
     /* 宿主 head 异常：徽标退化，不报错 */
   }

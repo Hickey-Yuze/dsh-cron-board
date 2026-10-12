@@ -112,6 +112,26 @@ const CSS = `
   --dsh-cb-shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.16);
 }
 
+/* 终杀加固：弹层关键面直接字面量 !important——对抗 renderer 中可能残留的
+ * 任何旧版样式块（迭代期间暗色自持块 specificity 0-2-1 高于亮色锚定 0-1-0，
+ * 双 style 并存时旧块会赢）。!important 压过一切非 !important 规则。 */
+.dsh-cb-modal {
+  background: #ffffff !important;
+  color: #1c1c22 !important;
+  border-color: rgba(20, 20, 30, 0.08) !important;
+}
+.dsh-cb-modal-head { border-bottom-color: rgba(20, 20, 30, 0.08) !important; }
+.dsh-cb-modal .dsh-cb-title { color: #1c1c22 !important; }
+.dsh-cb-modal .dsh-cb-label { color: #6d6d7a !important; }
+.dsh-cb-modal .dsh-cb-hint { color: #6d6d7a !important; }
+.dsh-cb-modal .dsh-cb-input,
+.dsh-cb-modal .dsh-cb-select,
+.dsh-cb-modal .dsh-cb-textarea {
+  background: #f6f6f8 !important;
+  color: #1c1c22 !important;
+  border-color: rgba(20, 20, 30, 0.16) !important;
+}
+
 /* ── 侧栏入口图标 ── */
 .dsh-cb-icon-btn {
   display: flex; align-items: center; justify-content: center;
@@ -339,9 +359,11 @@ const CSS = `
 export function ensureThemeStyle(): void {
   if (typeof document === 'undefined') return;
   let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
-  if (el) return;
-  el = document.createElement('style');
-  el.id = STYLE_ID;
-  el.textContent = CSS;
-  document.head.appendChild(el);
+  if (el === null) {
+    el = document.createElement('style');
+    el.id = STYLE_ID;
+    document.head.appendChild(el);
+  }
+  // 热更新安全：bundle 换版后内容比对更新，旧样式不再永久占坑。
+  if (el.textContent !== CSS) el.textContent = CSS;
 }
