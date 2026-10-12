@@ -170,7 +170,10 @@ export function ChannelBadge(props: { sessionId?: string; rpc?: RpcFn }): ReactE
     let disposed = false;
     const pull = (): void => {
       void fetchLedgerMap(rpc).then((map) => {
-        if (!disposed) setLedgerBadge(map.get(sessionId) ?? null);
+        if (disposed) return;
+        // 不在 map = 非 cron-board 会话 → 保持 undefined（不命中零注入）；
+        // 在 map = cron 会话 → null（默认时钟）或任务徽标。
+        setLedgerBadge(map.has(sessionId) ? (map.get(sessionId) ?? null) : undefined);
       });
     };
     pull();
