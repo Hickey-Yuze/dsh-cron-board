@@ -19,7 +19,9 @@ export function newExecId(): string {
 }
 
 export function newSessionId(): string {
-  return randomHex(12);
+  // cron- 前缀：会话渠道徽标（client/src/channelBadge.tsx）按前缀识别 cron-board 会话，
+  // 与 office- 前缀先例同构；旧 hex id 不受影响（resume/延续对 id 格式无假设）。
+  return `cron-${randomHex(12)}`;
 }
 
 export function sha256(text: string): string {

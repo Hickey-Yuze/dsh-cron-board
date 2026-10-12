@@ -14,9 +14,9 @@ import { LedgerStore, type BoardTask } from './ledger.js';
 import { extractJsonObject } from './parse.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
-import { normalizeDraft, normalizeTags } from './rpc.js';
+import { collectSessionIds, normalizeDraft, normalizeTags } from './rpc.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
-import { newTaskId } from './util.js';
+import { newSessionId, newTaskId } from './util.js';
 
 let section = 0;
 function ok(cond: unknown, msg: string): void {
@@ -282,6 +282,18 @@ async function main(): Promise<void> {
     '非法 base64 拒绝',
   );
   eq(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false }).pinned?.permission, undefined, '缺省权限 = 跟随默认');
+
+  // ── 会话渠道徽标（channelBadge）数据面 ──
+  ok(newSessionId().startsWith('cron-'), '新会话 id 带 cron- 前缀（旧 hex id 兼容）');
+  eq(
+    collectSessionIds([
+      { activeSessionId: 'cron-aa', executions: [{ sessionId: 'cron-bb' }, { sessionId: 'cron-aa' }] },
+      { executions: [{ sessionId: '' }] },
+      {},
+    ]).join(','),
+    'cron-aa,cron-bb',
+    'session-ids 聚合去重+滤空',
+  );
   const withTags = normalizeDraft({
     title: 'x',
     prompt: 'p',

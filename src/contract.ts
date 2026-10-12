@@ -192,7 +192,8 @@ export type CronBoardEndpoint =
   | 'cron-board/parse-prompt'
   | 'cron-board/push-test'
   | 'cron-board/push-retry'
-  | 'cron-board/exec-result';
+  | 'cron-board/exec-result'
+  | 'cron-board/session-ids';
 
 export interface CronBoardRequestMap {
   'cron-board/state': Record<string, never>;
@@ -210,6 +211,7 @@ export interface CronBoardRequestMap {
   'cron-board/push-test': { id: string };
   'cron-board/push-retry': { taskId: string; execId: string };
   'cron-board/exec-result': { taskId: string; execId: string };
+  'cron-board/session-ids': Record<string, never>;
 }
 
 export interface CronBoardResponseMap {
@@ -228,6 +230,12 @@ export interface CronBoardResponseMap {
   'cron-board/push-test': BoardSnapshot;
   'cron-board/push-retry': BoardSnapshot;
   'cron-board/exec-result': { markdown: string };
+  'cron-board/session-ids': SessionIdsResult;
+}
+
+/** 会话渠道徽标兜底数据：账本内全部 cron-board 会话 id（activeSessionId + 历次执行）。 */
+export interface SessionIdsResult {
+  ids: string[];
 }
 
 /** 宿主 rpc 层的统一信封。 */

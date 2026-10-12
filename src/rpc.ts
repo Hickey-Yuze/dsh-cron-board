@@ -50,6 +50,24 @@ interface WebServerLike {
 const API_PREFIX = '/api/cron-board';
 const BODY_MAX = 8 * 1024 * 1024;
 
+/** 账本任务集 → 去重会话 id（cron-board/session-ids 核心；纯函数便于冒烟）。 */
+export function collectSessionIds(
+  tasks: readonly { activeSessionId?: string; executions?: readonly { sessionId: string }[] }[],
+): string[] {
+  const ids = new Set<string>();
+  for (const task of tasks) {
+    if (typeof task.activeSessionId === 'string' && task.activeSessionId !== '') {
+      ids.add(task.activeSessionId);
+    }
+    for (const exec of task.executions ?? []) {
+      if (typeof exec.sessionId === 'string' && exec.sessionId !== '') {
+        ids.add(exec.sessionId);
+      }
+    }
+  }
+  return [...ids];
+}
+
 export interface RpcDeps {
   ledger: LedgerStore;
   runner: TaskRunner;
@@ -300,6 +318,12 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
     switch (endpoint) {
       case 'cron-board/state':
         return deps.buildSnapshot();
+
+      case 'cron-board/session-ids': {
+        // 会话渠道徽标兜底（client/src/channelBadge.tsx）：账本内全部 cron-board
+        // 会话 id（activeSessionId + 历次执行记录），去重后供客户端集合判定。
+        return { ids: collectSessionIds(deps.ledger.snapshot.tasks) };
+      }
 
       case 'cron-board/meta': {
         const view: MetaView = {

@@ -19,6 +19,7 @@ import type { CronBoardClientCtx } from './env.js';
 import { ensureThemeStyle } from './theme.js';
 import { initI18n, t } from './i18n.js';
 import { BoardPanel } from './board.js';
+import { ChannelBadge, ensureBadgeStyle } from './channelBadge.js';
 import { PANEL_ID } from './panel-icon.js';
 import { makeRpc } from './rpc.js';
 import { SettingsPanel } from './settings.js';
@@ -210,6 +211,16 @@ export function apply(ctx: CronBoardClientCtx): void {
         inject: () => ({ rpc }),
       },
       SettingsPanel,
+    );
+  });
+
+  // 会话渠道徽标（docs/PRD-会话渠道徽标.md · cron 渠道）：行首 seat +
+  // 运行中 B1 生命周期互斥（channelBadge.tsx）。旧宿主无此 slot 时 inject 静默。
+  ensureBadgeStyle();
+  ctx.slots.inject('sidebar.session.row.leading', () => {
+    return ctx.slots.register(
+      { name: 'sidebar.session.row.leading', key: 'cron-board-badge', inject: () => ({ rpc }) },
+      ChannelBadge,
     );
   });
 
