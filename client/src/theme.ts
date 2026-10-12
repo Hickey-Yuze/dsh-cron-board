@@ -354,6 +354,17 @@ const CSS = `
 
 /* ─ 空状态 ── */
 .dsh-cb-empty { padding: 40px; text-align: center; color: var(--dsh-cb-dim); font-size: 14px; }
+
+/* ── 任务徽标设置 ── */
+.dsh-cb-badgerow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dsh-cb-badge-preview { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--dsh-cb-border-2); background: var(--dsh-cb-card-2); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.dsh-cb-badge-input { font: inherit; font-size: 14px; width: 64px; padding: 5px 8px; color: var(--dsh-cb-text); background: var(--dsh-cb-card-2); border: 1px solid var(--dsh-cb-border); border-radius: 8px; }
+.dsh-cb-badge-select { font: inherit; font-size: 13px; width: auto; padding: 5px 8px; color: var(--dsh-cb-text); background: var(--dsh-cb-card-2); border: 1px solid var(--dsh-cb-border); border-radius: 8px; }
+.dsh-cb-swatches { display: flex; align-items: center; gap: 6px; }
+.dsh-cb-swatch { width: 18px; height: 18px; border-radius: 9px; border: none; padding: 0; cursor: pointer; outline: 1px solid rgba(20, 20, 30, 0.14); transition: transform 0.1s ease; }
+.dsh-cb-swatch:hover { transform: scale(1.12); }
+.dsh-cb-swatch:active { transform: scale(0.94); }
+.dsh-cb-swatch[data-on='1'] { box-shadow: 0 0 0 2px var(--dsh-cb-card), 0 0 0 4px currentColor; }
 `;
 
 export function ensureThemeStyle(): void {

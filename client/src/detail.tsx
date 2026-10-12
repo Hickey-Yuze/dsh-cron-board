@@ -87,17 +87,17 @@ function pushOptions(meta: MetaView | null): { value: string; label: string }[] 
   return options;
 }
 
-/** 徽标预览（编辑框内 20px 所见即所得；与侧边栏渲染同构）。 */
+/** 徽标预览（编辑框内所见即所得；与侧边栏渲染同构）。 */
 function BadgePreview(props: { badge: TaskBadge | null }): ReactElement {
   const b = props.badge;
   if (b !== null && b.kind === 'emoji') {
-    return createElement('span', { style: { fontSize: 18, lineHeight: 1 } }, b.value);
+    return createElement('span', { style: { fontSize: 20, lineHeight: 1 } }, b.value);
   }
   if (b !== null && b.kind === 'image') {
     return createElement('img', {
       src: 'data:' + b.mediaType + ';base64,' + b.data,
       alt: '',
-      style: { width: 20, height: 20, objectFit: 'contain', verticalAlign: '-5px' },
+      style: { width: 22, height: 22, objectFit: 'contain' },
     });
   }
   const paths = (b !== null && b.kind === 'icon' ? (BADGE_ICONS[b.value] ?? BADGE_ICONS.clock) : BADGE_ICONS.clock)!;
@@ -107,7 +107,7 @@ function BadgePreview(props: { badge: TaskBadge | null }): ReactElement {
       : CRON_CHANNEL_COLOR;
   return createElement(
     'svg',
-    { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: color, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', style: { verticalAlign: '-5px' } },
+    { viewBox: '0 0 24 24', width: 22, height: 22, fill: 'none', stroke: color, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' },
     paths.map((d, i) => createElement('path', { d, key: i })),
   );
 }
@@ -144,6 +144,7 @@ export function DetailModal(props: {
   const [images, setImages] = useState<Array<{ name?: string; mediaType: string; data: string }> | undefined>(undefined);
   const [existingImageCount] = useState(src?.promptImageRefs?.length ?? 0);
   const [badge, setBadge] = useState<TaskBadge | null>(src?.badge ?? null);
+  const badgeFileRef = useRef<HTMLInputElement | null>(null);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -597,15 +598,12 @@ export function DetailModal(props: {
               { label: t('f.badge') },
               createElement(
                 'div',
-                { className: 'dsh-cb-tagrow' },
+                { className: 'dsh-cb-badgerow' },
                 // 预览（所见即所得）
-                createElement(
-                  'span',
-                  { className: 'dsh-cb-tagitem', style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28 } },
-                  createElement(BadgePreview, { badge }),
-                ),
+                createElement('span', { className: 'dsh-cb-badge-preview' }, createElement(BadgePreview, { badge })),
                 // emoji 自由输入（清空=恢复默认）
                 createElement('input', {
+                  className: 'dsh-cb-badge-input',
                   value: badge !== null && badge.kind === 'emoji' ? badge.value : '',
                   placeholder: '😀',
                   maxLength: 8,
@@ -613,44 +611,45 @@ export function DetailModal(props: {
                     const v = e?.target?.value ?? '';
                     setBadge(v.trim() === '' ? null : { kind: 'emoji', value: v });
                   },
-                  style: { width: 72, font: 'inherit', fontSize: 14 },
                 }),
                 // 预设图标
-                createElement(Select, {
-                  value: badge !== null && badge.kind === 'icon' ? badge.value : '',
-                  onChange: (v: string) => {
-                    if (v === '') setBadge(null);
-                    else setBadge({ kind: 'icon', value: v, color: badge !== null && badge.kind === 'icon' ? badge.color : undefined });
-                  },
-                  options: [{ value: '', label: t('f.badgeDefault') }].concat(
-                    Object.keys(BADGE_ICONS).map((k) => ({ value: k, label: k })),
-                  ),
-                }),
-                // 色板（点色点=图标模式+用色；图标未选时默认 clock）
-                ...Object.entries(BADGE_COLORS).map(([key, color]) =>
-                  createElement('button', {
-                    key,
-                    type: 'button',
-                    title: key,
-                    onClick: () =>
-                      setBadge({ kind: 'icon', value: badge !== null && badge.kind === 'icon' ? badge.value : 'clock', color: key }),
-                    style: {
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      padding: 0,
-                      cursor: 'pointer',
-                      background: color,
-                      border: '2px solid ' + (badge !== null && badge.kind === 'icon' && badge.color === key ? color : 'transparent'),
-                      outline: '1px solid var(--dsh-cb-border)',
+                createElement(
+                  'select',
+                  {
+                    className: 'dsh-cb-badge-select',
+                    value: badge !== null && badge.kind === 'icon' ? badge.value : '',
+                    onChange: (e: { target: { value: string } }) => {
+                      const v = e.target.value;
+                      if (v === '') setBadge(null);
+                      else setBadge({ kind: 'icon', value: v, color: badge !== null && badge.kind === 'icon' ? badge.color : undefined });
                     },
-                  }),
+                  },
+                  createElement('option', { value: '' }, t('f.badgeDefault')),
+                  Object.keys(BADGE_ICONS).map((k) => createElement('option', { key: k, value: k }, k)),
                 ),
-                // 上传图标文件
+                // 色板（点色点=图标模式+用色；图标未选时默认 clock；选中态双环）
+                createElement(
+                  'span',
+                  { className: 'dsh-cb-swatches' },
+                  ...Object.entries(BADGE_COLORS).map(([key, color]) =>
+                    createElement('button', {
+                      key,
+                      type: 'button',
+                      className: 'dsh-cb-swatch',
+                      title: key,
+                      'data-on': badge !== null && badge.kind === 'icon' && badge.color === key ? '1' : '0',
+                      style: { background: color, color },
+                      onClick: () =>
+                        setBadge({ kind: 'icon', value: badge !== null && badge.kind === 'icon' ? badge.value : 'clock', color: key }),
+                    }),
+                  ),
+                ),
+                // 隐藏 file input + 上传/清除按钮
                 createElement('input', {
+                  ref: badgeFileRef,
                   type: 'file',
                   accept: 'image/png,image/svg+xml,image/webp,image/x-icon,.ico',
-                  style: { fontSize: 12, maxWidth: 190 },
+                  style: { display: 'none' },
                   onChange: (e: { target?: { files?: FileList | null; value?: string } }) => {
                     const file = (e?.target?.files ?? [])[0];
                     if (e.target) e.target.value = '';
@@ -685,10 +684,10 @@ export function DetailModal(props: {
                     })();
                   },
                 }),
-                // 清除（恢复默认时钟）
+                createElement(Btn, { kind: 'ghost', onClick: () => badgeFileRef.current?.click() }, t('f.badgeUpload')),
                 badge !== null ? createElement(Btn, { kind: 'ghost', onClick: () => setBadge(null) }, t('f.badgeClear')) : null,
-                createElement('span', { className: 'dsh-cb-hint' }, t('f.badgeHint')),
               ),
+              createElement('div', { className: 'dsh-cb-hint' }, t('f.badgeHint')),
             )
           : null,
         task && task.executions.length > 0 && task.needsConfirm && task.confirmed
