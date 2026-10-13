@@ -305,6 +305,8 @@ async function main(): Promise<void> {
   eq(normalizeDraft({ title: 'x', prompt: 'p', cron: '* * * * *', enabled: false }).badge, undefined, 'badge 缺省=不变');
   throws(() => normalizeBadge({ kind: 'emoji', value: 'x'.repeat(17) }), 'emoji 超长拒');
   throws(() => normalizeBadge({ kind: 'icon', value: 'nope' }), '未知预设图标拒');
+  eq(JSON.stringify(normalizeBadge({ kind: 'icon', value: 'telegram', color: 'sky' })), JSON.stringify({ kind: 'icon', value: 'telegram', color: 'sky' }), 'dsh-im 图标通过校验');
+  eq(JSON.stringify(normalizeBadge({ kind: 'icon', value: 'weixin' })), JSON.stringify({ kind: 'icon', value: 'weixin' }), 'dsh-im 单色无色缺省');
   throws(() => normalizeBadge({ kind: 'icon', value: 'clock', color: 'nope' }), '未知颜色拒');
   throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/bmp', data: 'aGk=' }), '不支持格式拒');
   throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/png', data: 'not base64!' }), '坏 base64 拒');

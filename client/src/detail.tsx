@@ -5,7 +5,7 @@
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { BoardSnapshot, MetaView, TaskBadge, TaskTag, TaskView } from '../../src/contract.js';
-import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES } from '../../src/contract.js';
+import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS } from '../../src/contract.js';
 import { CRON_CHANNEL_COLOR, invalidateLedgerMap } from './channelBadge.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
@@ -100,11 +100,31 @@ function BadgePreview(props: { badge: TaskBadge | null }): ReactElement {
       style: { width: 22, height: 22, objectFit: 'contain' },
     });
   }
-  const paths = (b !== null && b.kind === 'icon' ? (BADGE_ICONS[b.value] ?? BADGE_ICONS.clock) : BADGE_ICONS.clock)!;
   const color =
     b !== null && b.kind === 'icon' && b.color !== undefined && b.color in BADGE_COLORS
       ? (BADGE_COLORS[b.color] ?? CRON_CHANNEL_COLOR)
       : CRON_CHANNEL_COLOR;
+  if (b !== null && b.kind === 'icon' && b.value in IM_BADGE_ICONS) {
+    const def = IM_BADGE_ICONS[b.value]!;
+    return createElement(
+      'svg',
+      { viewBox: def.viewBox, width: 22, height: 22 },
+      def.parts.map((p, i) =>
+        p.strokeColor !== undefined
+          ? createElement('path', {
+              d: p.d,
+              key: i,
+              fill: p.fill ?? 'none',
+              stroke: p.strokeColor,
+              strokeWidth: p.strokeWidth ?? 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round',
+            })
+          : createElement('path', { d: p.d, key: i, fill: p.fill ?? color }),
+      ),
+    );
+  }
+  const paths = (b !== null && b.kind === 'icon' ? (BADGE_ICONS[b.value] ?? BADGE_ICONS.clock) : BADGE_ICONS.clock)!;
   return createElement(
     'svg',
     { viewBox: '0 0 24 24', width: 22, height: 22, fill: 'none', stroke: color, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -625,7 +645,16 @@ export function DetailModal(props: {
                     },
                   },
                   createElement('option', { value: '' }, t('f.badgeDefault')),
-                  Object.keys(BADGE_ICONS).map((k) => createElement('option', { key: k, value: k }, k)),
+                  createElement(
+                    'optgroup',
+                    { label: t('f.badgePreset') },
+                    Object.keys(BADGE_ICONS).map((k) => createElement('option', { key: k, value: k }, k)),
+                  ),
+                  createElement(
+                    'optgroup',
+                    { label: 'dsh-im' },
+                    Object.keys(IM_BADGE_ICONS).map((k) => createElement('option', { key: k, value: k }, k)),
+                  ),
                 ),
                 // 色板（点色点=图标模式+用色；图标未选时默认 clock；选中态双环）
                 createElement(

@@ -21,8 +21,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { BADGE_COLORS, BADGE_ICONS } from '../../src/contract.js';
-import type { TaskBadge } from '../../src/contract.js';
+import { BADGE_COLORS, BADGE_ICONS, IM_BADGE_ICONS } from '../../src/contract.js';
+import type { ImBadgeIconPart, TaskBadge } from '../../src/contract.js';
 import { t } from './i18n.js';
 import type { RpcFn } from './rpc.js';
 
@@ -42,6 +42,26 @@ function maskUri(paths: readonly string[]): string {
     .map((d) => `<path d="${d}"/>`)
     .join('')}</svg>`;
   return encodeURIComponent(svg);
+}
+
+/** dsh-im 单色图标 → mask 用 fill 型 SVG（黑色形状，viewBox 随图标）。 */
+function maskUriIm(parts: ReadonlyArray<{ d: string }>, viewBox: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${parts
+    .map((p) => `<path d="${p.d}" fill="black"/>`)
+    .join('')}</svg>`;
+  return encodeURIComponent(svg);
+}
+
+/** dsh-im 多色图标 → 品牌原色 SVG 字符串（currentColor 部分用选中色）。 */
+function imSvg(def: { viewBox: string; parts: ReadonlyArray<ImBadgeIconPart> }, color: string): string {
+  const body = def.parts
+    .map((p) =>
+      p.strokeColor !== undefined
+        ? `<path d="${p.d}" fill="${p.fill ?? 'none'}" stroke="${p.strokeColor}" stroke-width="${p.strokeWidth ?? 2}" stroke-linecap="round" stroke-linejoin="round"/>`
+        : `<path d="${p.d}" fill="${p.fill ?? color}"/>`,
+    )
+    .join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${def.viewBox}">${body}</svg>`;
 }
 
 /* ── 账本兜底映射：页面生命周期内缓存，任务徽标变更后失效重拉 ── */
@@ -103,6 +123,7 @@ export function buildBadgeNode(badge: TaskBadge | null): HTMLElement {
   } else if (badge !== null && badge.kind === 'icon') {
     const span = document.createElement('span');
     const paths = BADGE_ICONS[badge.value];
+    const im = IM_BADGE_ICONS[badge.value];
     const color =
       badge.color !== undefined && badge.color in BADGE_COLORS
         ? (BADGE_COLORS[badge.color] ?? CRON_CHANNEL_COLOR)
@@ -113,6 +134,28 @@ export function buildBadgeNode(badge: TaskBadge | null): HTMLElement {
       span.style.backgroundColor = color;
       span.style.webkitMask = uri;
       span.style.mask = uri;
+    } else if (im !== undefined) {
+      // dsh-im 渠道图标：全 currentColor → mask 随色板；含品牌固定色 → data URI 原色渲染
+      const mono = im.parts.every((p) => p.fill === undefined && p.strokeColor === undefined);
+      if (mono) {
+        const uri = `url("data:image/svg+xml,${maskUriIm(im.parts, im.viewBox)}") no-repeat center / contain`;
+        span.style.backgroundColor = color;
+        span.style.webkitMask = uri;
+        span.style.mask = uri;
+      } else {
+        const img = document.createElement('img');
+        img.src = `data:image/svg+xml,${encodeURIComponent(imSvg(im, color))}`;
+        img.alt = '';
+        img.style.width = '15px';
+        img.style.height = '15px';
+        img.style.marginRight = '6px';
+        img.style.objectFit = 'contain';
+        span.replaceWith(img);
+        img.setAttribute(BADGE_ATTR, badgeFingerprint(badge));
+        img.setAttribute('aria-hidden', 'true');
+        img.title = t('badge.title');
+        return img;
+      }
     }
     el = span;
   } else {
