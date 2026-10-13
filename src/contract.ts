@@ -192,6 +192,16 @@ export const BADGE_COLORS: Record<string, string> = {
 /** 上传徽标图标的 mediaType 白名单与 base64 体积上限（64KB 解码后）。 */
 export const BADGE_IMAGE_TYPES = ['image/png', 'image/svg+xml', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'] as const;
 export const BADGE_IMAGE_MAX_BYTES = 64 * 1024;
+export const BADGE_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** 徽标颜色统一解析：BADGE_COLORS key → 表值；#RRGGBB hex → 原样；其他 → 缺省。server/client 共用。 */
+export function resolveBadgeColor(color: string | undefined, fallback = '#F59E0B'): string {
+  if (color === undefined) return fallback;
+  const keyed = BADGE_COLORS[color];
+  if (keyed !== undefined) return keyed;
+  if (BADGE_HEX_RE.test(color)) return color;
+  return fallback;
+}
 
 /** dsh-im 渠道徽标同款图标（自 @xmanrui/dsh-im channel-logos.js 提取）：part.fill 缺省=currentColor（随徽标色），fill:'none'+strokeColor=描边，固定色=品牌原色。 */
 export type ImBadgeIconPart = { d: string; fill?: string; strokeColor?: string; strokeWidth?: number };

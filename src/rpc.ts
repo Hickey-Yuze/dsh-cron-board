@@ -7,7 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { cronNextRun, isValidCron } from './cron.js';
 import type { CronBoardConfig } from './config.js';
-import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS } from './contract.js';
+import { BADGE_COLORS, BADGE_HEX_RE, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS } from './contract.js';
 import type {
   BoardSnapshot,
   MetaView,
@@ -173,7 +173,7 @@ export function normalizeBadge(raw: unknown): TaskBadge | null | undefined {
     if (!(value in BADGE_ICONS) && !(value in IM_BADGE_ICONS)) fail('bad-request', `未知预设图标: ${value}`);
     if (b.color === undefined || b.color === null) return { kind: 'icon', value };
     const color = asString(b.color, 'badge.color', 16);
-    if (!(color in BADGE_COLORS)) fail('bad-request', `未知徽标颜色: ${color}`);
+    if (!(color in BADGE_COLORS) && !BADGE_HEX_RE.test(color)) fail('bad-request', `未知徽标颜色: ${color}`);
     return { kind: 'icon', value, color };
   }
   if (b.kind === 'image') {

@@ -15,6 +15,7 @@ import { extractJsonObject } from './parse.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeTags } from './rpc.js';
+import { resolveBadgeColor } from './contract.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
 import { newSessionId, newTaskId } from './util.js';
 
@@ -306,8 +307,14 @@ async function main(): Promise<void> {
   throws(() => normalizeBadge({ kind: 'emoji', value: 'x'.repeat(17) }), 'emoji 超长拒');
   throws(() => normalizeBadge({ kind: 'icon', value: 'nope' }), '未知预设图标拒');
   eq(JSON.stringify(normalizeBadge({ kind: 'icon', value: 'telegram', color: 'sky' })), JSON.stringify({ kind: 'icon', value: 'telegram', color: 'sky' }), 'dsh-im 图标通过校验');
+  eq(JSON.stringify(normalizeBadge({ kind: 'icon', value: 'clock', color: '#A3B18A' })), JSON.stringify({ kind: 'icon', value: 'clock', color: '#A3B18A' }), 'hex 自定义颜色通过');
+  eq(JSON.stringify(normalizeBadge({ kind: 'icon', value: 'clock', color: '#a3b18a' })), JSON.stringify({ kind: 'icon', value: 'clock', color: '#a3b18a' }), 'hex 小写通过');
   eq(JSON.stringify(normalizeBadge({ kind: 'icon', value: 'weixin' })), JSON.stringify({ kind: 'icon', value: 'weixin' }), 'dsh-im 单色无色缺省');
   throws(() => normalizeBadge({ kind: 'icon', value: 'clock', color: 'nope' }), '未知颜色拒');
+  eq(resolveBadgeColor('sky'), '#38BDF8', 'resolveBadgeColor key');
+  eq(resolveBadgeColor('#a3b18a'), '#a3b18a', 'resolveBadgeColor hex');
+  eq(resolveBadgeColor('nope'), '#F59E0B', 'resolveBadgeColor fallback');
+  eq(resolveBadgeColor(undefined), '#F59E0B', 'resolveBadgeColor default');
   throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/bmp', data: 'aGk=' }), '不支持格式拒');
   throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/png', data: 'not base64!' }), '坏 base64 拒');
   throws(() => normalizeBadge({ kind: 'image', mediaType: 'image/png', data: 'A'.repeat(90001) }), '图标超 64KB 拒');

@@ -365,6 +365,10 @@ const CSS = `
 .dsh-cb-swatch:hover { transform: scale(1.12); }
 .dsh-cb-swatch:active { transform: scale(0.94); }
 .dsh-cb-swatch[data-on='1'] { box-shadow: 0 0 0 2px var(--dsh-cb-card), 0 0 0 4px currentColor; }
+.dsh-cb-swatch-custom { background: conic-gradient(#f87171, #fbbf24, #34d399, #38bdf8, #a78bfa, #f87171); }
+.dsh-cb-badge-btn { padding: 3px 10px; font-size: 12px; line-height: 18px; border-radius: 8px; border: 1px solid var(--dsh-cb-border); background: var(--dsh-cb-card); color: var(--dsh-cb-dim); cursor: pointer; white-space: nowrap; }
+.dsh-cb-badge-btn:hover { color: var(--dsh-cb-text); border-color: var(--dsh-cb-border-2); }
+.dsh-cb-badge-btn:active { transform: scale(.96); }
 `;
 
 export function ensureThemeStyle(): void {

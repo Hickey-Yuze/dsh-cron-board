@@ -21,7 +21,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { BADGE_COLORS, BADGE_ICONS, IM_BADGE_ICONS } from '../../src/contract.js';
+import { BADGE_ICONS, IM_BADGE_ICONS, resolveBadgeColor } from '../../src/contract.js';
 import type { ImBadgeIconPart, TaskBadge } from '../../src/contract.js';
 import { t } from './i18n.js';
 import type { RpcFn } from './rpc.js';
@@ -124,10 +124,7 @@ export function buildBadgeNode(badge: TaskBadge | null): HTMLElement {
     const span = document.createElement('span');
     const paths = BADGE_ICONS[badge.value];
     const im = IM_BADGE_ICONS[badge.value];
-    const color =
-      badge.color !== undefined && badge.color in BADGE_COLORS
-        ? (BADGE_COLORS[badge.color] ?? CRON_CHANNEL_COLOR)
-        : CRON_CHANNEL_COLOR;
+    const color = resolveBadgeColor(badge.color, CRON_CHANNEL_COLOR);
     applyGeometry(span, 15, 6);
     if (paths !== undefined) {
       const uri = `url("data:image/svg+xml,${maskUri(paths)}") no-repeat center / contain`;

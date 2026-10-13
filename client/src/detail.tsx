@@ -5,7 +5,7 @@
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { BoardSnapshot, MetaView, TaskBadge, TaskTag, TaskView } from '../../src/contract.js';
-import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS } from '../../src/contract.js';
+import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS, resolveBadgeColor } from '../../src/contract.js';
 import { CRON_CHANNEL_COLOR, invalidateLedgerMap } from './channelBadge.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
@@ -100,10 +100,7 @@ function BadgePreview(props: { badge: TaskBadge | null }): ReactElement {
       style: { width: 22, height: 22, objectFit: 'contain' },
     });
   }
-  const color =
-    b !== null && b.kind === 'icon' && b.color !== undefined && b.color in BADGE_COLORS
-      ? (BADGE_COLORS[b.color] ?? CRON_CHANNEL_COLOR)
-      : CRON_CHANNEL_COLOR;
+  const color = resolveBadgeColor(b !== null && b.kind === 'icon' ? b.color : undefined, CRON_CHANNEL_COLOR);
   if (b !== null && b.kind === 'icon' && b.value in IM_BADGE_ICONS) {
     const def = IM_BADGE_ICONS[b.value]!;
     return createElement(
@@ -165,6 +162,7 @@ export function DetailModal(props: {
   const [existingImageCount] = useState(src?.promptImageRefs?.length ?? 0);
   const [badge, setBadge] = useState<TaskBadge | null>(src?.badge ?? null);
   const badgeFileRef = useRef<HTMLInputElement | null>(null);
+  const badgeColorRef = useRef<HTMLInputElement | null>(null);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -672,6 +670,25 @@ export function DetailModal(props: {
                         setBadge({ kind: 'icon', value: badge !== null && badge.kind === 'icon' ? badge.value : 'clock', color: key }),
                     }),
                   ),
+                  createElement('button', {
+                    key: '__custom',
+                    type: 'button',
+                    className: 'dsh-cb-swatch dsh-cb-swatch-custom',
+                    title: t('f.badgeCustom'),
+                    'data-on': badge !== null && badge.kind === 'icon' && badge.color !== undefined && badge.color in BADGE_COLORS ? '0' : badge !== null && badge.kind === 'icon' && badge.color !== undefined ? '1' : '0',
+                    style: { color: badge !== null && badge.kind === 'icon' && badge.color !== undefined && !(badge.color in BADGE_COLORS) ? badge.color : undefined },
+                    onClick: () => badgeColorRef.current?.click(),
+                  }),
+                  createElement('input', {
+                    ref: badgeColorRef,
+                    type: 'color',
+                    style: { display: 'none' },
+                    onChange: (e: { target?: { value?: string } }) => {
+                      const v = e?.target?.value;
+                      if (!v) return;
+                      setBadge({ kind: 'icon', value: badge !== null && badge.kind === 'icon' ? badge.value : 'clock', color: v.toLowerCase() });
+                    },
+                  }),
                 ),
                 // 隐藏 file input + 上传/清除按钮
                 createElement('input', {
@@ -713,8 +730,8 @@ export function DetailModal(props: {
                     })();
                   },
                 }),
-                createElement(Btn, { kind: 'ghost', onClick: () => badgeFileRef.current?.click() }, t('f.badgeUpload')),
-                badge !== null ? createElement(Btn, { kind: 'ghost', onClick: () => setBadge(null) }, t('f.badgeClear')) : null,
+                createElement('button', { type: 'button', className: 'dsh-cb-badge-btn', onClick: () => badgeFileRef.current?.click() }, t('f.badgeUpload')),
+                badge !== null ? createElement('button', { type: 'button', className: 'dsh-cb-badge-btn', onClick: () => setBadge(null) }, t('f.badgeClear')) : null,
               ),
               createElement('div', { className: 'dsh-cb-hint' }, t('f.badgeHint')),
             )
