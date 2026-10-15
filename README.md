@@ -70,3 +70,7 @@ pnpm run smoke        # 重建并跑 9 组断言（cron/门控/账本/结果/推
 ## 边界（v1 精简核心版）
 
 不做：归档恢复、任务标签、交接包、冻结快照、AI 解析 cron、电源保护、会话复用、多目标推送、shell 任务、群 webhook 直推。
+
+## 许可证
+
+[MIT](./LICENSE) © Yuze
