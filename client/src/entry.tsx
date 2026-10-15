@@ -100,6 +100,8 @@ function injectSidebarEntry(ctx: CronBoardClientCtx): () => void {
     const rootRect = r.getBoundingClientRect();
     entry.style.width = `${Math.round(btnRect.width)}px`;
     entry.style.marginLeft = `${Math.round(btnRect.left - rootRect.left)}px`;
+    // 宿主收起侧栏时「新会话」缩成纯图标（宽 <56px）：同步切纯图标态，避免文字溢出被裁
+    entry.classList.toggle('dsh-cb-collapsed', btnRect.width < 56);
   }
 
   /** 插到「新会话」行之后（root 直接子级层级，不依赖瞬态几何），并跟随其尺寸变化。 */

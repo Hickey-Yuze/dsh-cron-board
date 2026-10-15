@@ -41,6 +41,15 @@ const CSS = `
 .dsh-cron-board-sidebar-btn:active {
   transform: scale(0.985) !important;
 }
+.dsh-cron-board-sidebar-btn.dsh-cb-collapsed {
+  padding: 0 !important;
+  gap: 0 !important;
+  font-size: 0 !important;
+  aspect-ratio: 1 / 1 !important;
+}
+.dsh-cron-board-sidebar-btn.dsh-cb-collapsed .dsh-cron-board-sidebar-label {
+  display: none !important;
+}
 
 .dsh-cron-board-sidebar-icon {
   display: inline-flex !important;
