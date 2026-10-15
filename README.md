@@ -67,10 +67,6 @@ pnpm run smoke        # 重建并跑 9 组断言（cron/门控/账本/结果/推
 
 产物协议：Client bundle 为 `window.__ModuleLoader__.load({ id, factory })` 单文件，`factory(require)` 返回 `{ apply, inject }`；react 与 `@deepseek-ai/*` 全部 external 不打入。详见根 [AGENTS.md](./AGENTS.md)。
 
-## 边界（v1 精简核心版）
-
-不做：归档恢复、任务标签、交接包、冻结快照、AI 解析 cron、电源保护、会话复用、多目标推送、shell 任务、群 webhook 直推。
-
 ## 许可证
 
 [MIT](./LICENSE) © Yuze
