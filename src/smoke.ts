@@ -196,6 +196,18 @@ async function main(): Promise<void> {
   ok(briefFail.includes('❌') && briefFail.includes('error') && !briefFail.includes('dsh-cron-board'), '失败简讯模板（含原因、无署名）');
   const enBrief = unavailable.briefFor({ ok: true, title: 'weekly', status: 'success', durationMs: 65000, lang: 'en' });
   ok(enBrief.includes('Duration: 1m 5s') && !enBrief.includes('— dsh-cron-board'), '英文简讯');
+  // dsh-ui 围栏清洗：JSON 卡片 → 纯文本文案（2026-10-17 汇报任务 JSON 漏出实测）
+  const fenced = unavailable.briefFor({
+    ok: true,
+    title: '汇报',
+    status: 'success',
+    content:
+      '前导文本\n```dsh-ui\n{"gap":12,"items":[{"type":"copy","label":"已发送的汇报文案","text":"截止今日11:20分数据，通过555单"},{"type":"callout","tone":"success","title":"说明","content":"文件为新导出"}]}\n```',
+  });
+  ok(!fenced.includes('```dsh-ui') && !fenced.includes('"items"'), '简讯不漏 dsh-ui 围栏与 JSON 源码');
+  ok(fenced.includes('已发送的汇报文案') && fenced.includes('截止今日11:20分数据') && fenced.includes('文件为新导出'), 'dsh-ui 卡片文案已提取为纯文本');
+  const briefBad = unavailable.briefFor({ ok: true, title: '汇报', status: 'success', content: '```dsh-ui\n{broken json\n```' });
+  ok(!briefBad.includes('```dsh-ui') && briefBad.includes('已省略'), '坏 JSON 降级占位提示');
   // 服务直调成功
   const sent: Array<[string, string]> = [];
   const svc: DshImLike = {

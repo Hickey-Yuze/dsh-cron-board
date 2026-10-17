@@ -137,7 +137,7 @@ export class Pusher {
     return { state: 'failed', attempts: maxAttempts, channel, lastError };
   }
 
-  /** 终态简讯（zh/en）：状态头 + agent 回复正文（截断）+ 失败原因 + 会话链接。不落本地路径、不署名（用户要求）。 */
+  /** 终态简讯（zh/en）：状态头 + agent 回复正文（IM 清洗 + 截断）+ 失败原因。不落本地路径、不署名（用户要求）。 */
   briefFor(input: {
     ok: boolean;
     title: string;
@@ -150,7 +150,7 @@ export class Pusher {
   }): string {
     const lang = input.lang ?? 'zh';
     const dur = input.durationMs !== undefined ? fmtDuration(input.durationMs, lang) : undefined;
-    const body = clampBody(input.content);
+    const body = clampBody(sanitizeForIm(input.content ?? ''));
     if (lang === 'en') {
       const lines = [input.ok ? '✅ Cron task finished' : '❌ Cron task failed', `Task: ${input.title}`, `Status: ${input.status}`];
       if (dur !== undefined) lines.push(`Duration: ${dur}`);
@@ -192,6 +192,53 @@ export function dingtalkFormatSafe(raw: string): string {
       return '\u3000'.repeat(lead) + line.slice(lead).trimEnd();
     })
     .join('\n\n');
+}
+
+/**
+ * agent 回复里的 GenUI（```dsh-ui）围栏是宿主聊天界面专用渲染格式——IM 是纯文本
+ * 通道，原样推送会把 JSON 源码漏给用户（2026-10-17 汇报任务实测）。
+ * 推送前提取卡片里的可读文案（copy/callout/text 等组件的文本字段）拼成纯文本；
+ * 解析失败则整段替换为占位提示。完整全文始终以结果文件为准。
+ */
+const DSH_UI_FENCE = /```dsh-ui[^\n]*\n([\s\S]*?)```/g;
+const IM_TEXT_KEYS = new Set(['text', 'content', 'label', 'title', 'desc', 'value']);
+
+function collectReadableText(node: unknown, out: string[]): void {
+  if (typeof node === 'string') {
+    const v = node.trim();
+    if (v !== '') out.push(v);
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const x of node) collectReadableText(x, out);
+    return;
+  }
+  if (node !== null && typeof node === 'object') {
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (typeof v === 'string') {
+        if (IM_TEXT_KEYS.has(k)) {
+          const s = v.trim();
+          if (s !== '') out.push(s);
+        }
+      } else if (v !== null && typeof v === 'object') {
+        collectReadableText(v, out);
+      }
+    }
+  }
+}
+
+export function sanitizeForIm(text: string): string {
+  const PLACEHOLDER = '（附一段界面卡片内容，已省略——全文见结果文件）';
+  return text.replace(DSH_UI_FENCE, (_m, body: string) => {
+    try {
+      const out: string[] = [];
+      collectReadableText(JSON.parse(body) as unknown, out);
+      const joined = out.join('\n').trim();
+      return joined !== '' ? joined : PLACEHOLDER;
+    } catch {
+      return PLACEHOLDER;
+    }
+  });
 }
 
 /** 简讯正文的截断保护：按 UTF-8 字节算（dsh-im 微信通道单条 ~2048 字节即拆条，正文留 1200 字节）。 */
