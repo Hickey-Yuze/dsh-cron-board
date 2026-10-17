@@ -208,6 +208,16 @@ async function main(): Promise<void> {
   ok(fenced.includes('已发送的汇报文案') && fenced.includes('截止今日11:20分数据') && fenced.includes('文件为新导出'), 'dsh-ui 卡片文案已提取为纯文本');
   const briefBad = unavailable.briefFor({ ok: true, title: '汇报', status: 'success', content: '```dsh-ui\n{broken json\n```' });
   ok(!briefBad.includes('```dsh-ui') && briefBad.includes('已省略'), '坏 JSON 降级占位提示');
+  // 结构感知：keyvalue 键值成对、table 行内「｜」连接（2026-10-17 货源播报拆散实测）
+  const briefStruct = unavailable.briefFor({
+    ok: true,
+    title: '货源',
+    status: 'success',
+    content:
+      '```dsh-ui\n{"items":[{"type":"keyvalue","pairs":[{"key":"iPhone18系列同步群","value":"13"},{"key":"备用群","value":"33"}]},{"type":"table","columns":["型号","仅激活库存","状态要点"],"rows":[["18Pro 合计","139 台","256/512 充足主推"]]}]}\n```',
+  });
+  ok(briefStruct.includes('iPhone18系列同步群：13') && briefStruct.includes('备用群：33'), 'keyvalue 键值成对同行');
+  ok(briefStruct.includes('型号 ｜ 仅激活库存 ｜ 状态要点') && briefStruct.includes('18Pro 合计 ｜ 139 台'), 'table 列头与行内连接');
   // 服务直调成功
   const sent: Array<[string, string]> = [];
   const svc: DshImLike = {

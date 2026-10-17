@@ -195,34 +195,83 @@ export function dingtalkFormatSafe(raw: string): string {
 }
 
 /**
- * agent 回复里的 GenUI（```dsh-ui）围栏是宿主聊天界面专用渲染格式——IM 是纯文本
+ * agent 回复里的 GenUI（```dsh-ui）围栏是宿主聊天界面专用渲染格式——IM 是纯文本/markdown
  * 通道，原样推送会把 JSON 源码漏给用户（2026-10-17 汇报任务实测）。
- * 推送前提取卡片里的可读文案（copy/callout/text 等组件的文本字段）拼成纯文本；
+ * 提取器结构感知：keyvalue 键值成对、table 行内「｜」连接、copy/callout 键值同行、
+ * 文本字段里的 markdown 标记（粗体/链接）原样保留（dsh-im 通道可渲染）。
  * 解析失败则整段替换为占位提示。完整全文始终以结果文件为准。
  */
 const DSH_UI_FENCE = /```dsh-ui[^\n]*\n([\s\S]*?)```/g;
-const IM_TEXT_KEYS = new Set(['text', 'content', 'label', 'title', 'desc', 'value']);
 
-function collectReadableText(node: unknown, out: string[]): void {
+/** GenUI 组件 → 可读文本行（避免逐字段拆散）。 */
+function nodeToLines(node: unknown): string[] {
   if (typeof node === 'string') {
     const v = node.trim();
-    if (v !== '') out.push(v);
-    return;
+    return v === '' ? [] : [v];
   }
-  if (Array.isArray(node)) {
-    for (const x of node) collectReadableText(x, out);
-    return;
-  }
-  if (node !== null && typeof node === 'object') {
-    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-      if (typeof v === 'string') {
-        if (IM_TEXT_KEYS.has(k)) {
-          const s = v.trim();
-          if (s !== '') out.push(s);
-        }
-      } else if (v !== null && typeof v === 'object') {
-        collectReadableText(v, out);
+  if (Array.isArray(node)) return node.flatMap((x) => nodeToLines(x));
+  if (node === null || typeof node !== 'object') return [];
+  const o = node as Record<string, unknown>;
+  const s = (k: string): string => {
+    const v = o[k];
+    if (typeof v === 'string') return v.trim();
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+    return '';
+  };
+  const pair = (a: string, b: string): string[] => (a !== '' && b !== '' ? [`${a}：${b}`] : [a, b].filter((x) => x !== ''));
+  switch (o.type) {
+    case 'copy':
+      return pair(s('label'), s('text'));
+    case 'callout':
+      return pair(s('title'), s('content'));
+    case 'stat':
+      return [[s('label'), s('value'), s('delta')].filter((x) => x !== '').join('：')].filter((x) => x !== '');
+    case 'keyvalue': {
+      if (!Array.isArray(o.pairs)) return [];
+      return o.pairs.flatMap((p) => {
+        if (p === null || typeof p !== 'object') return nodeToLines(p);
+        const po = p as Record<string, unknown>;
+        const k = po.key === undefined ? '' : String(po.key).trim();
+        const v = po.value === undefined ? '' : String(po.value).trim();
+        return pair(k, v);
+      });
+    }
+    case 'table': {
+      const cols = Array.isArray(o.columns)
+        ? o.columns
+            .map((c) =>
+              typeof c === 'string'
+                ? c
+                : c !== null && typeof c === 'object'
+                  ? String((c as Record<string, unknown>).label ?? '').trim()
+                  : '',
+            )
+            .filter((x) => x !== '')
+        : [];
+      const rows = Array.isArray(o.rows)
+        ? o.rows.map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? '')).join(' ｜ ') : nodeToLines(r).join(' ｜ ')))
+        : [];
+      const lines: string[] = [];
+      if (cols.length > 0) lines.push(cols.join(' ｜ '));
+      lines.push(...rows.filter((x) => x !== ''));
+      return lines;
+    }
+    case 'divider':
+    case 'spacer':
+      return [];
+    default: {
+      // 通用兜底：标题键在前、正文键成段、嵌套容器递归
+      const lines: string[] = [];
+      for (const k of ['label', 'title']) {
+        const v = s(k);
+        if (v !== '') lines.push(v);
       }
+      const body = [s('content'), s('text'), s('desc')].filter((x) => x !== '').join('：');
+      if (body !== '') lines.push(body);
+      for (const k of ['items', 'children', 'rows', 'pairs', 'steps']) {
+        if (Array.isArray(o[k])) lines.push(...(o[k] as unknown[]).flatMap((x) => nodeToLines(x)));
+      }
+      return lines;
     }
   }
 }
@@ -231,9 +280,16 @@ export function sanitizeForIm(text: string): string {
   const PLACEHOLDER = '（附一段界面卡片内容，已省略——全文见结果文件）';
   return text.replace(DSH_UI_FENCE, (_m, body: string) => {
     try {
-      const out: string[] = [];
-      collectReadableText(JSON.parse(body) as unknown, out);
-      const joined = out.join('\n').trim();
+      const spec = JSON.parse(body) as Record<string, unknown>;
+      const head = typeof spec.title === 'string' && spec.title.trim() !== '' ? [spec.title.trim()] : [];
+      const lines = [
+        ...head,
+        ...(Array.isArray(spec.items) ? spec.items.flatMap((x) => nodeToLines(x)) : nodeToLines(spec)),
+      ];
+      const joined = lines
+        .filter((x) => x !== '')
+        .join('\n')
+        .trim();
       return joined !== '' ? joined : PLACEHOLDER;
     } catch {
       return PLACEHOLDER;
