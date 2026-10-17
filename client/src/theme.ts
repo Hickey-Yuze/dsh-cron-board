@@ -402,11 +402,12 @@ const CSS = `
 .dsh-cb-topbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dsh-cb-topbar-right { display: flex; align-items: center; gap: 8px; }
 .dsh-cb-logo {
-  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; overflow: hidden;
   display: inline-flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #2f7bff, #1b5fe0); color: #fff;
-  box-shadow: 0 2px 6px rgba(27, 102, 243, 0.28);
+  background: #eef1f6; border: 1px solid rgba(20, 20, 30, 0.08);
+  box-shadow: 0 1px 4px rgba(20, 20, 30, 0.10);
 }
+.dsh-cb-logo-img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; }
 .dsh-cb-titlewrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .dsh-cb-titlerow { display: flex; align-items: center; gap: 8px; }
 .dsh-cb-title { font-size: 15px; font-weight: 700; color: var(--dsh-cb-text); margin: 0; letter-spacing: -0.2px; }
@@ -619,7 +620,16 @@ const CSS = `
 .dsh-cb-logsec-title { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; color: var(--dsh-cb-text); }
 .dsh-cb-viewall { border: 0; background: transparent; color: #1b66f3; font-size: 12px; cursor: pointer; font-family: inherit; padding: 2px 4px; border-radius: 6px; }
 .dsh-cb-viewall:hover { text-decoration: underline; }
-.dsh-cb-logsec-body { display: flex; flex-direction: column; padding: 0 8px 8px; }
+.dsh-cb-logsec-body {
+  display: flex; flex-direction: column; padding: 0 8px 8px;
+  max-height: 320px; overflow-y: auto; overscroll-behavior: contain;
+}
+.dsh-cb-logsec-body-open { max-height: 60vh; }
+.dsh-cb-logsec-body::-webkit-scrollbar { width: 6px; }
+.dsh-cb-logsec-body::-webkit-scrollbar-thumb { background: rgba(20, 20, 30, 0.14); border-radius: 3px; }
+.dsh-cb-logsec-body::-webkit-scrollbar-thumb:hover { background: rgba(20, 20, 30, 0.26); }
+.dsh-cb-logsec-body::-webkit-scrollbar-track { background: transparent; }
+.dsh-cb-logsec-body { scrollbar-width: thin; scrollbar-color: rgba(20, 20, 30, 0.2) transparent; }
 .dsh-cb-logrow {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; cursor: pointer;
   transition: background .12s ease;

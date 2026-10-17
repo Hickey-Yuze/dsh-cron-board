@@ -25,6 +25,7 @@ const result = await build({
   jsx: 'automatic',
   charset: 'utf8',
   external: ['react', 'react/jsx-runtime', 'react-dom', '@deepseek-ai/*'],
+  loader: { '.png': 'dataurl' },
   minify: false,
   legalComments: 'none',
   sourcemap: false,

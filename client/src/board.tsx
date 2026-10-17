@@ -13,6 +13,7 @@ import { lang, t, tpl } from './i18n.js';
 import { DetailModal } from './detail.js';
 import type { RpcFn } from './rpc.js';
 import { Badge, Btn } from './ui.js';
+import logoUrl from '../assets/logo.png';
 
 type Chip = 'all' | 'enabled' | 'paused' | 'archived';
 
@@ -398,7 +399,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       'div',
       { className: 'dsh-cb-topbar' },
       createElement('div', { className: 'dsh-cb-topbar-left' },
-        createElement('span', { className: 'dsh-cb-logo' }, createElement(IconClock, { size: 18 })),
+        createElement('span', { className: 'dsh-cb-logo' }, createElement('img', { className: 'dsh-cb-logo-img', src: logoUrl, alt: 'Yuze', draggable: false })),
         createElement('div', { className: 'dsh-cb-titlewrap' },
           createElement('div', { className: 'dsh-cb-titlerow' },
             createElement('h2', { className: 'dsh-cb-title' }, t('board.titleClean')),
@@ -617,7 +618,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         ? createElement('div', { className: 'dsh-cb-empty' }, t('board.feedEmpty'))
         : createElement(
             'div',
-            { className: 'dsh-cb-logsec-body' },
+            { className: `dsh-cb-logsec-body${logsExpanded ? ' dsh-cb-logsec-body-open' : ''}` },
             (logsExpanded ? allLogs.slice(0, 50) : allLogs.slice(0, 5)).map(({ task, exec, at }) => {
               const sub = exec.summary && exec.summary.trim() !== ''
                 ? exec.summary.trim().slice(0, 60)
