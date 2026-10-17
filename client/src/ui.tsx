@@ -78,12 +78,14 @@ export function Select(props: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
+  disabled?: boolean;
 }): ReactElement {
   return createElement(
     'select',
     {
       className: 'dsh-cb-select',
       value: props.value,
+      disabled: props.disabled === true,
       onChange: (e: { target: { value: string } }) => props.onChange(e.target.value),
     },
     props.options.map((o, i) => createElement('option', { key: `${o.value}-${i}`, value: o.value }, o.label)),

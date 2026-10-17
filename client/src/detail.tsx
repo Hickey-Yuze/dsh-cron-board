@@ -1,5 +1,8 @@
 /**
- * 任务详情弹层：新建/编辑表单 + 权限确认门 + 立即执行/测试推送 + 执行历史与结果查看。
+ * 任务详情弹层 v2（对齐设计稿 cron-board-edit-modal-light）：
+ * 头部（标题+副标题+状态徽章+×）→ 权限确认门卡 → 标题/PROMPT → 排程分区（CRON 徽章+
+ * 预览胶囊+五列字段+预设 chips）→ 运行环境 → 权限与推送 → 会话开关 → 标签 → 任务图片
+ * （虚线拖拽上传）→ 会话徽标 → 重新武装警告 → 操作按钮行 → 最近执行。
  * 表单状态仅在挂载时从快照初始化（轮询刷新不重置）；切换任务由父组件 key 重挂载。
  */
 import { createElement, useEffect, useRef, useState } from 'react';
@@ -8,10 +11,10 @@ import type { BoardSnapshot, MetaView, TaskBadge, TaskTag, TaskView } from '../.
 import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS, resolveBadgeColor } from '../../src/contract.js';
 import { CRON_CHANNEL_COLOR, invalidateLedgerMap } from './channelBadge.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
-import { fmtAgo, fmtDur, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
+import { fmtAgo, fmtDur, fmtFuture, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
 import { lang, t } from './i18n.js';
 import type { RpcFn } from './rpc.js';
-import { Badge, Btn, Dot, ErrorBox, Field, Select, TagBadge, TextArea, TextInput } from './ui.js';
+import { Badge, ErrorBox, Select, TagBadge, TextArea, TextInput } from './ui.js';
 
 /**
  * Portal 挂载点：弹层渲染进 document.body，脱离看板容器。
@@ -85,6 +88,77 @@ function pushOptions(meta: MetaView | null): { value: string; label: string }[] 
     }
   }
   return options;
+}
+
+/* --------------------------------- v2 小件 --------------------------------- */
+
+function SvgIcon(props: { children?: ReactNode; size?: number }): ReactElement {
+  return createElement(
+    'svg',
+    { className: 'dsh-cb-ic', width: props.size ?? 16, height: props.size ?? 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    props.children,
+  );
+}
+const IconShieldCheck = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z' }), createElement('path', { d: 'm9 12 2 2 4-4' }));
+const IconShieldAlert = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z' }), createElement('path', { d: 'M12 8v5' }), createElement('circle', { cx: 12, cy: 16, r: 0.6, fill: 'currentColor', stroke: 'none' }));
+const IconLock = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('rect', { x: 5, y: 11, width: 14, height: 9, rx: 2 }), createElement('path', { d: 'M8 11V8a4 4 0 0 1 8 0v3' }));
+const IconX = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M6 6l12 12M18 6 6 18' }));
+const IconClock = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('circle', { cx: 12, cy: 12, r: 9 }), createElement('path', { d: 'M12 7v5l3 3' }));
+const IconSave = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M5 3h11l3 3v15H5V3z' }), createElement('path', { d: 'M8 3v5h7V3M8 21v-7h8v7' }));
+const IconPlay = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M7 4.5v15l12-7.5-12-7.5z' }));
+const IconSend = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'm3 11 18-8-8 18-2.5-7.5L3 11z' }));
+const IconCheck = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'm4.5 12.5 5 5 10-11' }));
+const IconArchive = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('rect', { x: 3, y: 4, width: 18, height: 5, rx: 1 }), createElement('path', { d: 'M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4' }));
+const IconTrash = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13' }));
+const IconUpload = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M12 16V5m0 0-4 4m4-4 4 4' }), createElement('path', { d: 'M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2' }));
+const IconChevronR = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'm9 6 6 6-6 6' }));
+
+/** v2 开关（会话分区）。 */
+function Switch(props: { on: boolean; disabled?: boolean; onChange: (v: boolean) => void }): ReactElement {
+  return createElement('button', {
+    type: 'button',
+    role: 'switch',
+    'aria-checked': props.on,
+    className: `dsh-cb-switch${props.on ? ' dsh-cb-switch-on' : ''}`,
+    disabled: props.disabled === true,
+    onClick: () => props.onChange(!props.on),
+  });
+}
+
+/** v2 分区（细分割线 + 标题行）。 */
+function Section(props: { title: string; badge?: ReactNode; children?: ReactNode }): ReactElement {
+  return createElement(
+    'div',
+    { className: 'dsh-cb-sec' },
+    createElement('div', { className: 'dsh-cb-sec-head' },
+      createElement('span', { className: 'dsh-cb-sec-title' }, props.title),
+      props.badge ?? null,
+    ),
+    props.children,
+  );
+}
+
+/** 字段标签行（label 左 + hint 右）。 */
+function LabelRow(props: { label: string; hint?: string }): ReactElement {
+  return createElement('div', { className: 'dsh-cb-labelrow' },
+    createElement('span', { className: 'dsh-cb-label' }, props.label),
+    props.hint ? createElement('span', { className: 'dsh-cb-labelrow-hint' }, props.hint) : null,
+  );
+}
+
+/** v2 操作按钮（保存/执行/推送等）。 */
+function Btn2(props: { kind?: 'primary' | 'outline' | 'ghost' | 'danger-text'; icon?: ReactNode; label: string; disabled?: boolean; onClick: () => void }): ReactElement {
+  const cls = props.kind === 'primary'
+    ? 'dsh-cb-btn-primary dsh-cb-btn2'
+    : props.kind === 'ghost'
+      ? 'dsh-cb-btn-ghost dsh-cb-btn2'
+      : props.kind === 'danger-text'
+        ? 'dsh-cb-btn-danger-text'
+        : 'dsh-cb-btn-outline dsh-cb-btn2';
+  return createElement('button', { type: 'button', className: cls, disabled: props.disabled === true, onClick: props.onClick },
+    props.icon ?? null,
+    createElement('span', null, props.label),
+  );
 }
 
 /** 徽标预览（编辑框内所见即所得；与侧边栏渲染同构）。 */
@@ -163,6 +237,7 @@ export function DetailModal(props: {
   const [badge, setBadge] = useState<TaskBadge | null>(src?.badge ?? null);
   const badgeFileRef = useRef<HTMLInputElement | null>(null);
   const badgeColorRef = useRef<HTMLInputElement | null>(null);
+  const imageFileRef = useRef<HTMLInputElement | null>(null);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -185,9 +260,21 @@ export function DetailModal(props: {
   }, []);
 
   const cronOk = isValidCron(cron.trim());
-  const cronPreview =
-    cronOk && describeCron(cron.trim(), lang()) !== cron.trim() ? describeCron(cron.trim(), lang()) : t('f.cronPreview');
+  const cronDesc = cronOk ? describeCron(cron.trim(), lang()) : '';
+  const cronPreviewOk = cronOk && cronDesc !== cron.trim();
   const perm = (permission !== '' ? permission : task?.pinned.permission) ?? undefined;
+  const permHigh = perm !== undefined && perm !== 'read-only';
+
+  // cron 预设 chips：与当前字段匹配者高亮；全不匹配=自定义
+  const cronPresets: Array<{ key: string; fields: string[] }> = [
+    { key: 'mon', fields: ['9', '17', '*', '*', '1'] },
+    { key: 'daily', fields: ['0', '9', '*', '*', '*'] },
+    { key: 'weekday', fields: ['0', '9', '*', '*', '1-5'] },
+    { key: 'hourly', fields: ['0', '*', '*', '*', '*'] },
+  ];
+  const norm = (v: string | undefined) => (v === undefined || v.trim() === '' ? '*' : v.trim());
+  const matchedPreset = cronPresets.find((p) => p.fields.every((f, i) => norm(cronFields[i]) === f));
+  const isCustom = cronOk && matchedPreset === undefined;
 
   async function save(): Promise<void> {
     if (title.trim() === '' || prompt.trim() === '' || !cronOk) return;
@@ -304,11 +391,65 @@ export function DetailModal(props: {
     setTagDraft({ name: '', promptPrefix: '' });
   }
 
+  function addImageFiles(files: File[]): void {
+    if (files.length === 0) return;
+    void (async () => {
+      const next: Array<{ name?: string; mediaType: string; data: string }> = [];
+      for (const file of files.slice(0, 4)) {
+        if (!file.type.startsWith('image/')) continue;
+        next.push({ name: file.name, ...(await compressForModel(file)) });
+      }
+      setImages((prev) => [...(prev ?? []), ...next].slice(0, 4));
+    })();
+  }
+
+  // ── 权限确认门卡（绿=已确认 / 橙=待确认 / 灰=跟随默认档）──
+  const gateCard = task
+    ? createElement(
+        'div',
+        { className: `dsh-cb-gatecard ${task.needsConfirm ? (task.confirmed ? 'dsh-cb-gatecard-ok' : 'dsh-cb-gatecard-warn') : 'dsh-cb-gatecard-neutral'}` },
+        createElement('span', { className: 'dsh-cb-gatecard-icon' },
+          task.needsConfirm ? (task.confirmed ? createElement(IconShieldCheck, { size: 17 }) : createElement(IconShieldAlert, { size: 17 })) : createElement(IconLock, { size: 17 }),
+        ),
+        createElement(
+          'div',
+          { className: 'dsh-cb-gatecard-main' },
+          createElement('div', { className: 'dsh-cb-gatecard-title' },
+            task.needsConfirm ? (task.confirmed ? t('gate.okTitle') : t('gate.warnTitle')) : t('gate.neutralTitle'),
+          ),
+          task.needsConfirm
+            ? createElement('div', { className: 'dsh-cb-gatecard-body' }, t('gate.body'))
+            : createElement('div', { className: 'dsh-cb-gatecard-body' }, `${t('f.permission')}: ${t('perm.read-only')}`),
+          task.needsConfirm && !task.confirmed
+            ? createElement(
+                'div',
+                { className: 'dsh-cb-gatecard-actions' },
+                createElement(Btn2, {
+                  kind: 'primary',
+                  label: t('act.confirm'),
+                  disabled: busy,
+                  onClick: () => void action(() => props.rpc('cron-board/task-confirm', { id: task.id }), t('dl.confirmed')),
+                }),
+              )
+            : null,
+        ),
+      )
+    : null;
+
+  // ── cron 预览胶囊 ──
+  const cronPill = createElement(
+    'div',
+    { className: `dsh-cb-cronpill${cronOk ? '' : ' dsh-cb-cronpill-bad'}` },
+    createElement(IconClock, { size: 13 }),
+    createElement('span', { className: 'dsh-cb-cronpill-desc' }, cronOk ? (cronPreviewOk ? cronDesc : cron.trim()) : cron.trim()),
+    task?.nextRunAt && cronOk ? createElement('span', { className: 'dsh-cb-cronpill-next' }, `${t('board.next')} ${fmtFuture(task.nextRunAt)}`) : null,
+  );
+
   const modalTree = createElement(
     'div',
     {
       className: 'dsh-cb-modal-mask',
-      // 点击遮罩不关闭（2026-09-19 用户要求：误触会丢编辑内容）；仅通过 关闭/取消/保存/Esc 退出
+      // 点击遮罩不关闭（2026-09-19 用户要求：误触会丢编辑内容）；仅通过 关闭/保存/Esc 退出
       onMouseDown: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
       onClick: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
     },
@@ -319,79 +460,78 @@ export function DetailModal(props: {
         onMouseDown: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
         onClick: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
       },
+
+      // ── 头部（sticky）──
       createElement(
         'div',
-        { className: 'dsh-cb-modal-head' },
+        { className: 'dsh-cb-modal-head2' },
         createElement(
-          'h3',
-          { className: 'dsh-cb-title', style: { margin: 0, fontSize: 14 } },
-          task ? t('dl.editTitle') : t('dl.newTitle'),
+          'div',
+          { className: 'dsh-cb-modal-head2-main' },
+          createElement('h3', { className: 'dsh-cb-modal-title' }, task ? t('dl.editTitle') : t('dl.newTitle')),
+          src
+            ? createElement('div', { className: 'dsh-cb-modal-sub' },
+                [
+                  task ? src.title : null,
+                  (() => { const ws = (props.meta?.workspaces ?? []).find((w) => w.id === src.pinned.workspaceId); return ws ? ws.title : null; })(),
+                  cronOk ? cronDesc || cron.trim() : null,
+                ].filter(Boolean).join(' · '),
+              )
+            : null,
         ),
-        createElement('div', { className: 'dsh-cb-spacer' }),
-        task
-          ? createElement(
-              Badge,
-              { tone: task.enabled ? 'accent' : 'default' },
-              task.enabled ? t('st.enabledOn') : t('st.enabledOff'),
-            )
-          : null,
-        createElement(Btn, { kind: 'ghost', onClick: props.onClose }, t('act.close')),
+        createElement(
+          'div',
+          { className: 'dsh-cb-modal-head2-right' },
+          task
+            ? createElement(Badge, { tone: task.enabled ? 'accent' : 'default' }, task.enabled ? t('st.enabledOn') : t('st.paused'))
+            : null,
+          createElement('button', { type: 'button', className: 'dsh-cb-xbtn', title: t('act.close'), onClick: props.onClose }, createElement(IconX, { size: 16 })),
+        ),
       ),
+
+      // ── 内容（滚动区）──
       createElement(
         'div',
-        { className: 'dsh-cb-modal-body' },
-        archived ? createElement('div', { className: 'dsh-cb-notebox' }, t('dl.archived')) : null,
-        task
-          ? createElement(
-              'div',
-              { className: `dsh-cb-gatebox${task.confirmed ? ' dsh-cb-gate-ok' : ''}` },
-              createElement(
-                'div',
-                { className: 'dsh-cb-row' },
-                createElement('strong', { style: { fontSize: 12 } }, t('gate.title')),
-                task.needsConfirm
-                  ? task.confirmed
-                    ? createElement(Badge, { tone: 'ok' }, t('gate.confirmed'))
-                    : createElement(Badge, { tone: 'warn' }, t('gate.needConfirm'))
-                  : createElement(Badge, {}, t('perm.read-only')),
-              ),
-              task.needsConfirm ? createElement('span', { className: 'dsh-cb-hint' }, t('gate.body')) : null,
-              task.needsConfirm && !task.confirmed
-                ? createElement(
-                    'div',
-                    { className: 'dsh-cb-row' },
-                    createElement(
-                      Btn,
-                      {
-                        disabled: busy,
-                        onClick: () =>
-                          void action(() => props.rpc('cron-board/task-confirm', { id: task.id }), t('dl.confirmed')),
-                      },
-                      t('act.confirm'),
-                    ),
-                  )
-                : null,
-            )
-          : null,
+        { className: 'dsh-cb-modal-body2' },
+        archived ? createElement('div', { className: 'dsh-cb-gatecard dsh-cb-gatecard-neutral' },
+          createElement('span', { className: 'dsh-cb-gatecard-icon' }, createElement(IconArchive, { size: 17 })),
+          createElement('div', { className: 'dsh-cb-gatecard-main' },
+            createElement('div', { className: 'dsh-cb-gatecard-title' }, t('dl.archived')),
+          ),
+        ) : null,
+
+        gateCard,
+
+        // AI 解析（仅新建）
         !task && !archived
           ? createElement(
               'div',
-              { className: 'dsh-cb-field' },
-              createElement('span', { className: 'dsh-cb-label' }, t('f.aiParse')),
+              { className: 'dsh-cb-aicard' },
+              createElement(LabelRow, { label: t('f.aiParse') }),
               createElement(TextArea, { value: aiText, onChange: setAiText, placeholder: t('f.aiPlaceholder'), rows: 3 }),
               createElement(
                 'div',
-                { className: 'dsh-cb-row' },
-                createElement(Btn, { disabled: aiParsing || aiText.trim() === '', onClick: () => void runAiParse() }, aiParsing ? t('f.aiParsing') : t('f.aiParse')),
+                { className: 'dsh-cb-airow' },
+                createElement(Btn2, { kind: 'outline', label: aiParsing ? t('f.aiParsing') : t('f.aiParse'), disabled: aiParsing || aiText.trim() === '', onClick: () => void runAiParse() }),
                 createElement('span', { className: 'dsh-cb-hint' }, t('f.aiHint')),
               ),
             )
           : null,
-        createElement(Field, { label: t('f.title') }, createElement(TextInput, { value: title, onChange: setTitle, placeholder: t('f.titlePh'), disabled: archived })),
-        createElement(Field, { label: t('f.prompt') }, createElement(TextArea, { value: prompt, onChange: setPrompt, placeholder: t('f.promptPh'), disabled: archived })),
-        createElement(
-          Field,
-          { label: t('f.cronFields'), hint: cronPreview },
+
+        // 标题 / PROMPT
+        createElement('div', { className: 'dsh-cb-field' },
+          createElement('span', { className: 'dsh-cb-label' }, t('f.title')),
+          createElement(TextInput, { value: title, onChange: setTitle, placeholder: t('f.titlePh'), disabled: archived }),
+        ),
+        createElement('div', { className: 'dsh-cb-field' },
+          createElement(LabelRow, { label: t('f.prompt'), hint: t('f.promptHint') }),
+          createElement(TextArea, { value: prompt, onChange: setPrompt, placeholder: t('f.promptPh'), rows: 7, disabled: archived }),
+        ),
+
+        // ── 排程 ──
+        createElement(Section, { title: t('f.cronSection'), badge: createElement('span', { className: 'dsh-cb-sec-badge' }, t('f.cronBadge')) },
+          createElement('div', { className: 'dsh-cb-sec-hint' }, t('f.cronDesc')),
+          cronPill,
           createElement(
             'div',
             { className: 'dsh-cb-crongrid' },
@@ -411,37 +551,50 @@ export function DetailModal(props: {
               ),
             ),
           ),
-          !cronOk
-            ? createElement('span', { className: 'dsh-cb-hint', style: { color: 'var(--dsh-cb-err, #d5372f)' } }, 'cron: invalid')
-            : null,
-        ),
-        createElement(
-          'div',
-          { className: 'dsh-cb-row' },
+          !cronOk ? createElement('span', { className: 'dsh-cb-hint dsh-cb-hint-err' }, 'cron: invalid') : null,
           createElement(
             'div',
-            { style: { flex: 1, minWidth: 180 } },
-            createElement(
-              Field,
-              { label: t('f.workspace') },
+            { className: 'dsh-cb-presetrow' },
+            cronPresets.map((p) =>
+              createElement('button', {
+                key: p.key,
+                type: 'button',
+                className: `dsh-cb-chip${matchedPreset?.key === p.key ? ' dsh-cb-chip-active' : ''}`,
+                disabled: archived,
+                onClick: () => setCronFields([...p.fields]),
+              }, t(`f.cronPreset.${p.key}`)),
+            ),
+            createElement('button', {
+              type: 'button',
+              className: `dsh-cb-chip${isCustom ? ' dsh-cb-chip-active' : ''}`,
+              disabled: true,
+              style: { cursor: 'default' },
+            }, t('f.cronPreset.custom')),
+          ),
+        ),
+
+        // ── 运行环境 ──
+        createElement(Section, { title: t('f.envSection') },
+          createElement(
+            'div',
+            { className: 'dsh-cb-grid2' },
+            createElement('div', { className: 'dsh-cb-field' },
+              createElement('span', { className: 'dsh-cb-label' }, t('f.workspace')),
               createElement(Select, {
                 value: workspaceId,
                 onChange: setWorkspaceId,
+                disabled: archived,
                 options: [{ value: '', label: t('f.workspaceDefault') }].concat(
                   (props.meta?.workspaces ?? []).map((w) => ({ value: w.id, label: w.title })),
                 ),
               }),
             ),
-          ),
-          createElement(
-            'div',
-            { style: { flex: 1, minWidth: 180 } },
-            createElement(
-              Field,
-              { label: t('f.preset') },
+            createElement('div', { className: 'dsh-cb-field' },
+              createElement('span', { className: 'dsh-cb-label' }, t('f.preset')),
               createElement(Select, {
                 value: presetId,
                 onChange: setPresetId,
+                disabled: archived,
                 options: [{ value: '', label: t('f.presetDefault') }].concat(
                   (props.meta?.presets ?? []).map((p) => ({ value: p.id, label: p.title })),
                 ),
@@ -449,18 +602,18 @@ export function DetailModal(props: {
             ),
           ),
         ),
-        createElement(
-          'div',
-          { className: 'dsh-cb-row' },
+
+        // ── 权限与推送 ──
+        createElement(Section, { title: t('f.permSection') },
           createElement(
             'div',
-            { style: { flex: 1, minWidth: 180 } },
-            createElement(
-              Field,
-              { label: t('f.permission'), hint: perm !== undefined && perm !== 'read-only' ? t('gate.body') : undefined },
+            { className: 'dsh-cb-grid2' },
+            createElement('div', { className: 'dsh-cb-field' },
+              createElement('span', { className: 'dsh-cb-label' }, t('f.permission')),
               createElement(Select, {
                 value: permission,
                 onChange: setPermission,
+                disabled: archived,
                 options: [
                   { value: '', label: t('f.permissionDefault') },
                   { value: 'read-only', label: t('perm.read-only') },
@@ -468,152 +621,148 @@ export function DetailModal(props: {
                   { value: 'danger-full-access', label: t('perm.danger-full-access') },
                 ],
               }),
+              createElement('div', { className: `dsh-cb-fieldhint ${permHigh ? 'dsh-cb-fieldhint-warn' : ''}` },
+                permHigh ? t('f.permHintHigh') : '',
+              ),
+            ),
+            createElement('div', { className: 'dsh-cb-field' },
+              createElement('span', { className: 'dsh-cb-label' }, t('f.push')),
+              createElement(Select, { value: pushKey, onChange: setPushKey, disabled: archived, options: pushOptions(props.meta) }),
+              createElement('div', { className: 'dsh-cb-fieldhint' }, t('f.pushHint')),
             ),
           ),
+        ),
+
+        // ── 会话 ──
+        createElement(Section, { title: t('f.sessionSection') },
           createElement(
             'div',
-            { style: { flex: 1, minWidth: 180 } },
+            { className: 'dsh-cb-switchrow' },
             createElement(
-              Field,
-              { label: t('f.push') },
-              createElement(Select, { value: pushKey, onChange: setPushKey, options: pushOptions(props.meta) }),
+              'div',
+              { className: 'dsh-cb-switchrow-main' },
+              createElement('div', { className: 'dsh-cb-switchrow-title' }, t('f.reuseSession')),
+              createElement('div', { className: 'dsh-cb-switchrow-desc' }, t('f.reuseHint')),
             ),
+            createElement(Switch, { on: reuseSession, disabled: archived, onChange: setReuseSession }),
           ),
-        ),
-        createElement(
-          'div',
-          { className: 'dsh-cb-checkrow' },
-          createElement('input', {
-            type: 'checkbox',
-            checked: reuseSession,
-            disabled: archived,
-            onChange: (e: { target: { checked: boolean } }) => setReuseSession(e.target.checked),
-          }),
-          createElement('span', { style: { fontSize: 12 } }, t('f.reuseSession')),
-          createElement('span', { className: 'dsh-cb-hint' }, t('f.reuseHint')),
-        ),
-        createElement(
-          'div',
-          { className: 'dsh-cb-checkrow' },
-          createElement('input', {
-            type: 'checkbox',
-            id: 'dsh-cb-enabled',
-            checked: enabled,
-            disabled: archived,
-            onChange: (e: { target: { checked: boolean } }) => setEnabled(e.target.checked),
-          }),
-          createElement('label', { htmlFor: 'dsh-cb-enabled', style: { fontSize: 12 } }, t('f.enableAfterSave')),
-          createElement('span', { className: 'dsh-cb-hint' }, t('f.enableHint')),
-        ),
-        createElement(
-          Field,
-          { label: t('f.tags') },
           createElement(
             'div',
-            { className: 'dsh-cb-tagrow' },
-            tags.length > 0
-              ? createElement(
-                  'div',
-                  { className: 'dsh-cb-filterrow' },
-                  tags.map((tag) =>
-                    createElement(
-                      'span',
-                      { className: 'dsh-cb-tagitem', key: tag.name },
-                      createElement(TagBadge, { tag }),
-                      archived
-                        ? null
-                        : createElement(
-                            Btn,
-                            { kind: 'ghost', onClick: () => setTags((prev) => prev.filter((x) => x.name !== tag.name)) },
-                            t('f.tagRemove'),
-                          ),
-                    ),
-                  ),
-                )
-              : null,
-            !archived && tags.length < 8
-              ? createElement(
-                  'div',
-                  { className: 'dsh-cb-tagitem' },
-                  createElement(TextInput, {
-                    value: tagDraft.name,
-                    onChange: (v) => setTagDraft((prev) => ({ ...prev, name: v })),
-                    placeholder: t('f.tagName'),
-                  }),
-                  createElement(TextInput, {
-                    value: tagDraft.promptPrefix,
-                    onChange: (v) => setTagDraft((prev) => ({ ...prev, promptPrefix: v })),
-                    placeholder: t('f.tagPrefix'),
-                  }),
-                  createElement(Btn, { disabled: tagDraft.name.trim() === '', onClick: addTag }, t('f.tagAdd')),
-                )
-              : null,
+            { className: 'dsh-cb-switchrow' },
+            createElement(
+              'div',
+              { className: 'dsh-cb-switchrow-main' },
+              createElement('div', { className: 'dsh-cb-switchrow-title' }, t('f.enableAfterSave')),
+              createElement('div', { className: 'dsh-cb-switchrow-desc' }, t('f.enableHint')),
+            ),
+            createElement(Switch, { on: enabled, disabled: archived, onChange: setEnabled }),
           ),
         ),
-        !archived
-          ? createElement(
-              Field,
-              { label: t('f.images') },
-              createElement(
+
+        // ── 标签 ──
+        createElement(Section, { title: t('f.tags') },
+          tags.length > 0
+            ? createElement(
                 'div',
-                { className: 'dsh-cb-tagrow' },
-                // 已存图（durable ref，客户端无法预览，仅显示计数）
-                images === undefined && existingImageCount > 0
-                  ? createElement('span', { className: 'dsh-cb-hint' }, t('f.existingImages').replace('{n}', String(existingImageCount)))
-                  : null,
-                // 新选图片预览
-                (images ?? []).map((img, idx) =>
+                { className: 'dsh-cb-tagchips' },
+                tags.map((tag) =>
                   createElement(
                     'span',
-                    { className: 'dsh-cb-tagitem', key: idx },
-                    createElement('img', {
-                      src: 'data:' + img.mediaType + ';base64,' + img.data,
-                      alt: img.name ?? String(idx),
-                      style: { width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--dsh-cb-border)' },
-                    }),
-                    createElement(
-                      Btn,
-                      { kind: 'ghost', onClick: () => setImages((prev) => (prev ?? []).filter((_, i) => i !== idx)) },
-                      t('f.tagRemove'),
-                    ),
+                    { className: 'dsh-cb-tagchip', key: tag.name },
+                    createElement(TagBadge, { tag }),
+                    archived ? null : createElement('button', {
+                      type: 'button',
+                      className: 'dsh-cb-tagchip-x',
+                      title: t('f.tagRemove'),
+                      onClick: () => setTags((prev) => prev.filter((x) => x.name !== tag.name)),
+                    }, '×'),
                   ),
                 ),
-                (images ?? []).length < 4
-                  ? createElement(
-                      'div',
-                      { className: 'dsh-cb-tagitem' },
-                      createElement('input', {
-                        type: 'file',
-                        accept: 'image/png,image/jpeg,image/webp,image/gif',
-                        multiple: true,
-                        style: { fontSize: 12 },
-                        onChange: (e: { target?: { files?: FileList | null; value?: string } }) => {
-                          const files = Array.from(e?.target?.files ?? []);
-                          if (e.target) e.target.value = '';
-                          if (files.length === 0) return;
-                          void (async () => {
-                            const next: Array<{ name?: string; mediaType: string; data: string }> = [];
-                            for (const file of files.slice(0, 4)) {
-                              if (!file.type.startsWith('image/')) continue;
-                              next.push({ name: file.name, ...(await compressForModel(file)) });
-                            }
-                            setImages((prev) => [...(prev ?? []), ...next].slice(0, 4));
-                          })();
-                        },
-                      }),
-                      images !== undefined && images.length > 0
-                        ? createElement(Btn, { kind: 'ghost', onClick: () => setImages([]) }, t('f.clearImages'))
-                        : null,
-                    )
-                  : null,
-                createElement('span', { className: 'dsh-cb-hint' }, t('f.imagesHint')),
-              ),
+              )
+            : null,
+          !archived && tags.length < 8
+            ? createElement(
+                'div',
+                { className: 'dsh-cb-tagaddrow' },
+                createElement(TextInput, {
+                  value: tagDraft.name,
+                  onChange: (v) => setTagDraft((prev) => ({ ...prev, name: v })),
+                  placeholder: t('f.tagName'),
+                }),
+                createElement(TextInput, {
+                  value: tagDraft.promptPrefix,
+                  onChange: (v) => setTagDraft((prev) => ({ ...prev, promptPrefix: v })),
+                  placeholder: t('f.tagPrefix'),
+                }),
+                createElement(Btn2, { kind: 'outline', label: t('f.tagAdd'), disabled: tagDraft.name.trim() === '', onClick: addTag }),
+              )
+            : null,
+        ),
+
+        // ── 任务图片 ──
+        !archived
+          ? createElement(Section, { title: t('f.images'), badge: createElement('span', { className: 'dsh-cb-sec-badge' }, '≤ 4') },
+              createElement('div', { className: 'dsh-cb-sec-hint' }, t('f.imagesHint')),
+              images === undefined && existingImageCount > 0
+                ? createElement('div', { className: 'dsh-cb-sec-hint' }, t('f.existingImages').replace('{n}', String(existingImageCount)))
+                : null,
+              createElement('input', {
+                ref: imageFileRef,
+                type: 'file',
+                accept: 'image/png,image/jpeg,image/webp,image/gif',
+                multiple: true,
+                style: { display: 'none' },
+                onChange: (e: { target?: { files?: FileList | null; value?: string } }) => {
+                  const files = Array.from(e?.target?.files ?? []);
+                  if (e.target) e.target.value = '';
+                  addImageFiles(files);
+                },
+              }),
+              (images ?? []).length < 4
+                ? createElement('div', {
+                    className: 'dsh-cb-drop',
+                    onClick: () => imageFileRef.current?.click(),
+                    onDragOver: (e: { preventDefault: () => void }) => e.preventDefault(),
+                    onDrop: (e: { preventDefault: () => void; dataTransfer?: { files?: FileList | null } }) => {
+                      e.preventDefault();
+                      addImageFiles(Array.from(e.dataTransfer?.files ?? []));
+                    },
+                  },
+                    createElement(IconUpload, { size: 20 }),
+                    createElement('div', { className: 'dsh-cb-drop-main' }, t('f.dropUpload')),
+                    createElement('div', { className: 'dsh-cb-drop-sub' }, t('f.dropFormats')),
+                  )
+                : null,
+              (images ?? []).length > 0
+                ? createElement(
+                    'div',
+                    { className: 'dsh-cb-imgprev' },
+                    (images ?? []).map((img, idx) =>
+                      createElement(
+                        'span',
+                        { className: 'dsh-cb-imgcell', key: idx },
+                        createElement('img', {
+                          src: 'data:' + img.mediaType + ';base64,' + img.data,
+                          alt: img.name ?? String(idx),
+                        }),
+                        createElement('button', {
+                          type: 'button',
+                          className: 'dsh-cb-imgcell-x',
+                          title: t('f.tagRemove'),
+                          onClick: () => setImages((prev) => (prev ?? []).filter((_, i) => i !== idx)),
+                        }, '×'),
+                      ),
+                    ),
+                    createElement(Btn2, { kind: 'ghost', label: t('f.clearImages'), disabled: busy, onClick: () => setImages([]) }),
+                  )
+                : null,
             )
           : null,
+
+        // ── 会话徽标 ──
         !archived
-          ? createElement(
-              Field,
-              { label: t('f.badge') },
+          ? createElement(Section, { title: t('f.badge') },
+              createElement('div', { className: 'dsh-cb-sec-hint' }, t('f.badgeHint')),
               createElement(
                 'div',
                 { className: 'dsh-cb-badgerow' },
@@ -733,12 +882,24 @@ export function DetailModal(props: {
                 createElement('button', { type: 'button', className: 'dsh-cb-badge-btn', onClick: () => badgeFileRef.current?.click() }, t('f.badgeUpload')),
                 badge !== null ? createElement('button', { type: 'button', className: 'dsh-cb-badge-btn', onClick: () => setBadge(null) }, t('f.badgeClear')) : null,
               ),
-              createElement('div', { className: 'dsh-cb-hint' }, t('f.badgeHint')),
             )
           : null,
+
+        // 修改将重新武装确认门（橙卡）
         task && task.executions.length > 0 && task.needsConfirm && task.confirmed
-          ? createElement('div', { className: 'dsh-cb-notebox' }, t('dl.ranOnce'))
+          ? createElement(
+              'div',
+              { className: 'dsh-cb-gatecard dsh-cb-gatecard-warn dsh-cb-gatecard-flat' },
+              createElement('span', { className: 'dsh-cb-gatecard-icon' }, createElement(IconShieldAlert, { size: 17 })),
+              createElement(
+                'div',
+                { className: 'dsh-cb-gatecard-main' },
+                createElement('div', { className: 'dsh-cb-gatecard-title' }, t('dl.rearmTitle')),
+                createElement('div', { className: 'dsh-cb-gatecard-body' }, t('dl.rearmBody')),
+              ),
+            )
           : null,
+
         err !== null ? createElement(ErrorBox, {}, err) : null,
         note !== null ? createElement('div', { className: 'dsh-cb-notebox' }, note) : null,
         resultText !== null
@@ -749,164 +910,155 @@ export function DetailModal(props: {
               createElement('pre', { className: 'dsh-cb-result' }, resultText.markdown),
             )
           : null,
+
+        // ── 操作按钮行 ──
         createElement(
           'div',
-          { className: 'dsh-cb-row' },
+          { className: 'dsh-cb-actionrow' },
           archived
-            ? createElement(
-                Btn,
-                {
-                  disabled: busy,
-                  onClick: () =>
-                    void action(() => props.rpc('cron-board/task-restore', { id: task!.id }), t('dl.restored')).then(
-                      () => props.onClose(),
-                    ),
-                },
-                t('act.restore'),
-              )
-            : createElement(Btn, { kind: 'primary', disabled: busy || !cronOk, onClick: () => void save() }, t('act.save')),
+            ? createElement(Btn2, {
+                kind: 'primary',
+                icon: createElement(IconCheck, { size: 14 }),
+                label: t('act.restore'),
+                disabled: busy,
+                onClick: () =>
+                  void action(() => props.rpc('cron-board/task-restore', { id: task!.id }), t('dl.restored')).then(
+                    () => props.onClose(),
+                  ),
+              })
+            : createElement(Btn2, { kind: 'primary', icon: createElement(IconSave, { size: 14 }), label: t('act.save'), disabled: busy || !cronOk, onClick: () => void save() }),
           task && !archived
-            ? createElement(
-                Btn,
-                {
-                  disabled: busy || task.running,
-                  onClick: () => void action(() => props.rpc('cron-board/task-run', { id: task.id }), t('dl.runQueued')),
-                },
-                t('act.run'),
-              )
+            ? createElement(Btn2, {
+                kind: 'outline',
+                icon: createElement(IconPlay, { size: 13 }),
+                label: t('act.run'),
+                disabled: busy || task.running,
+                onClick: () => void action(() => props.rpc('cron-board/task-run', { id: task.id }), t('dl.runQueued')),
+              })
             : null,
           task && !archived
-            ? createElement(
-                Btn,
-                {
-                  disabled: busy,
-                  onClick: () => void action(() => props.rpc('cron-board/push-test', { id: task.id }), t('dl.pushTested')),
-                },
-                t('act.testPush'),
-              )
+            ? createElement(Btn2, {
+                kind: 'outline',
+                icon: createElement(IconSend, { size: 13 }),
+                label: t('act.testPush'),
+                disabled: busy,
+                onClick: () => void action(() => props.rpc('cron-board/push-test', { id: task.id }), t('dl.pushTested')),
+              })
             : null,
           task && !archived
-            ? createElement(
-                Btn,
-                {
-                  disabled: busy,
-                  onClick: () => {
-                    const next = !task.enabled;
-                    void action(
-                      () => props.rpc('cron-board/task-toggle', { id: task.id, enabled: next }),
-                      next ? t('act.enable') : t('act.disable'),
-                      () => setEnabled(next),
-                    );
-                  },
+            ? createElement(Btn2, {
+                kind: 'outline',
+                icon: createElement(IconCheck, { size: 13 }),
+                label: task.enabled ? t('act.disable') : t('act.enable'),
+                disabled: busy,
+                onClick: () => {
+                  const next = !task.enabled;
+                  void action(
+                    () => props.rpc('cron-board/task-toggle', { id: task.id, enabled: next }),
+                    next ? t('act.enable') : t('act.disable'),
+                    () => setEnabled(next),
+                  );
                 },
-                task.enabled ? t('act.disable') : t('act.enable'),
-              )
+              })
             : null,
           task && !archived
-            ? createElement(
-                Btn,
-                {
-                  disabled: busy || task.running,
-                  onClick: () =>
-                    void action(() => props.rpc('cron-board/task-archive', { id: task.id }), t('act.archive')).then(() =>
-                      props.onClose(),
-                    ),
-                },
-                t('act.archive'),
-              )
+            ? createElement(Btn2, {
+                kind: 'outline',
+                icon: createElement(IconArchive, { size: 13 }),
+                label: t('act.archive'),
+                disabled: busy || task.running,
+                onClick: () =>
+                  void action(() => props.rpc('cron-board/task-archive', { id: task.id }), t('act.archive')).then(() =>
+                    props.onClose(),
+                  ),
+              })
             : null,
           createElement('div', { className: 'dsh-cb-row-right' }),
           task
-            ? createElement(
-                Btn,
-                {
-                  kind: 'danger',
-                  disabled: busy || task.running,
-                  onClick: () => {
-                    if (typeof window !== 'undefined' && !window.confirm(t('dl.deleteConfirm'))) return;
-                    void action(() => props.rpc('cron-board/task-delete', { id: task.id }), t('act.close')).then(() =>
-                      props.onClose(),
-                    );
-                  },
+            ? createElement(Btn2, {
+                kind: 'danger-text',
+                icon: createElement(IconTrash, { size: 13 }),
+                label: t('act.delete'),
+                disabled: busy || task.running,
+                onClick: () => {
+                  if (typeof window !== 'undefined' && !window.confirm(t('dl.deleteConfirm'))) return;
+                  void action(() => props.rpc('cron-board/task-delete', { id: task.id }), t('act.close')).then(() =>
+                    props.onClose(),
+                  );
                 },
-                t('act.delete'),
-              )
+              })
             : null,
         ),
+
+        // ── 最近执行 ──
         task
-          ? createElement(
-              'div',
-              { className: 'dsh-cb-field' },
-              createElement('span', { className: 'dsh-cb-label' }, t('col.recent')),
+          ? createElement(Section, { title: t('col.recent'), badge: createElement('span', { className: 'dsh-cb-sec-badge dsh-cb-sec-badge-dim' }, String(task.executions.length)) },
               task.executions.length === 0
-                ? createElement('span', { className: 'dsh-cb-hint' }, t('board.feedEmpty'))
-                : task.executions.map((exec) =>
-                    createElement(
-                      'div',
-                      { className: 'dsh-cb-exec', key: exec.id },
+                ? createElement('div', { className: 'dsh-cb-sec-hint' }, t('board.feedEmpty'))
+                : createElement(
+                    'div',
+                    { className: 'dsh-cb-exec2-list' },
+                    task.executions.map((exec) =>
                       createElement(
                         'div',
-                        { className: 'dsh-cb-exec-head' },
-                        createElement(Dot, {
-                          tone:
-                            exec.status === 'running'
-                              ? 'run'
-                              : exec.status === 'success'
-                                ? 'ok'
-                                : exec.status === 'failed'
-                                  ? 'err'
-                                  : 'warn',
-                        }),                        createElement('strong', { style: { fontSize: 12 } }, t(`st.${exec.status}`)),
-                        createElement(Badge, {}, t(`exec.trigger.${exec.trigger}`)),
-                        exec.push
-                          ? createElement(
-                              Badge,
-                              {
-                                tone:
-                                  exec.push.state === 'sent' ? 'ok' : exec.push.state === 'failed' ? 'err' : 'default',
-                              },
-                              `${t('exec.push')}: ${t(`push.${exec.push.state}`)}`,
-                            )
-                          : null,
-                        createElement('div', { className: 'dsh-cb-row-right' }),
-                        exec.push?.state === 'failed'
-                          ? createElement(
-                              Btn,
-                              {
-                                kind: 'ghost',
+                        { className: 'dsh-cb-exec2', key: exec.id },
+                        createElement('span', {
+                          className: `dsh-cb-dot ${exec.status === 'running' ? 'dsh-cb-dot-run' : exec.status === 'success' ? 'dsh-cb-dot-ok' : exec.status === 'failed' ? 'dsh-cb-dot-err' : 'dsh-cb-dot-warn'}`,
+                        }),
+                        createElement(
+                          'div',
+                          { className: 'dsh-cb-exec2-main' },
+                          createElement(
+                            'div',
+                            { className: 'dsh-cb-exec2-head' },
+                            createElement('strong', { className: 'dsh-cb-exec2-status' }, t(`st.${exec.status}`)),
+                            createElement('span', { className: 'dsh-cb-exec2-tag' }, t(`exec.trigger.${exec.trigger}`)),
+                            exec.push
+                              ? createElement('span', { className: `dsh-cb-exec2-push ${exec.push.state === 'sent' ? 'dsh-cb-exec2-push-ok' : exec.push.state === 'failed' ? 'dsh-cb-exec2-push-bad' : ''}` },
+                                  `· ${t('exec.push')} · ${t(`push.${exec.push.state}`)}`,
+                                )
+                              : null,
+                          ),
+                          createElement(
+                            'div',
+                            { className: 'dsh-cb-exec2-meta' },
+                            fmtAgo(exec.startedAt),
+                            exec.durationMs !== undefined ? ` · ${t('exec.duration')} ${fmtDur(exec.durationMs)}` : '',
+                            exec.exitReason !== undefined ? ` · ${exec.exitReason}` : '',
+                          ),
+                        ),
+                        createElement(
+                          'div',
+                          { className: 'dsh-cb-exec2-actions' },
+                          exec.push?.state === 'failed'
+                            ? createElement('button', {
+                                type: 'button',
+                                className: 'dsh-cb-linkbtn',
                                 disabled: busy,
                                 onClick: () =>
                                   void action(
                                     () => props.rpc('cron-board/push-retry', { taskId: task.id, execId: exec.id }),
                                     t('dl.pushTested'),
                                   ),
-                              },
-                              t('act.retryPush'),
-                            )
-                          : null,
-                        exec.resultPath !== undefined && exec.status !== 'running'
-                          ? createElement(Btn, { kind: 'ghost', disabled: busy, onClick: () => void viewResult(exec.id) }, t('act.viewResult'))
-                          : null,
-                        exec.sessionId !== '' && props.sessions?.open && exec.status !== 'running'
-                          ? createElement(
-                              Btn,
-                              {
-                                kind: 'ghost',
+                              }, t('act.retryPush'))
+                            : null,
+                          exec.sessionId !== '' && props.sessions?.open && exec.status !== 'running'
+                            ? createElement('button', {
+                                type: 'button',
+                                className: 'dsh-cb-linkbtn',
                                 title: exec.sessionId,
                                 onClick: () => props.sessions?.open?.(exec.sessionId),
-                              },
-                              t('board.openSession'),
-                            )
-                          : null,
-                      ),
-                      createElement(
-                        'div',
-                        { className: 'dsh-cb-exec-meta' },
-                        createElement('span', null, fmtAgo(exec.startedAt)),
-                        exec.durationMs !== undefined
-                          ? createElement('span', null, `${t('exec.duration')} ${fmtDur(exec.durationMs)}`)
-                          : null,
-                        exec.exitReason !== undefined ? createElement('span', null, exec.exitReason) : null,
+                              }, t('board.openSession'))
+                            : null,
+                          exec.resultPath !== undefined && exec.status !== 'running'
+                            ? createElement('button', {
+                                type: 'button',
+                                className: 'dsh-cb-linkbtn dsh-cb-linkbtn-accent',
+                                disabled: busy,
+                                onClick: () => void viewResult(exec.id),
+                              }, `${t('act.viewResult')} ›`)
+                            : null,
+                        ),
                       ),
                     ),
                   ),
