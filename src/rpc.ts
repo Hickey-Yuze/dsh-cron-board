@@ -367,6 +367,14 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       }
 
       case 'cron-board/meta': {
+        let version = '';
+        try {
+          // CJS 运行时直读包根 package.json（dist/index.js 的 ../package.json）
+          const pkg = require('../package.json') as { version?: unknown };
+          if (typeof pkg?.version === 'string') version = pkg.version;
+        } catch {
+          /* 版本缺失仅隐藏徽章 */
+        }
         const view: MetaView = {
           workspaces: [],
           presets: [],
@@ -374,6 +382,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           targets: [],
           pushAvailable: deps.pusher.channelView().mode !== 'unavailable',
           pushMode: deps.pusher.channelView().mode,
+          version,
         };
         try {
           const reg = ctx.get('workspaceRegistry') as unknown as

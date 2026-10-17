@@ -142,6 +142,8 @@ export interface MetaView {
   targets: MetaTarget[];
   pushAvailable: boolean;
   pushMode: 'service' | 'http' | 'unavailable';
+  /** 插件版本（读 package.json；头部版本徽章展示，缺失为空串）。 */
+  version: string;
 }
 
 export interface SettingsView {
