@@ -218,11 +218,16 @@ async function main(): Promise<void> {
   });
   ok(briefStruct.includes('iPhone18系列同步群：13') && briefStruct.includes('备用群：33'), 'keyvalue 键值成对同行');
   ok(briefStruct.includes('型号 ｜ 仅激活库存 ｜ 状态要点') && briefStruct.includes('18Pro 合计 ｜ 139 台'), 'table 列头与行内连接');
-  // 服务直调成功
-  const sent: Array<[string, string]> = [];
+  // 长正文不截断（推送改为 markdown 后由 dsh-im 分段；旧的 1200 字节硬截断已删除）
+  const longBody = '第'.repeat(3000);
+  const briefLong = unavailable.briefFor({ ok: true, title: '长文', status: 'success', content: longBody });
+  ok(briefLong.includes(longBody), '长正文完整保留，不做本地截断');
+  ok(!briefLong.includes('内容过长已截断'), '不再出现「内容过长已截断」提示');
+  // 服务直调成功（并校验 format 透传给 dsh-im）
+  const sent: Array<{ botId: string; targetId: string; text: string; opts?: Record<string, unknown> }> = [];
   const svc: DshImLike = {
-    send: async (botId, targetId) => {
-      sent.push([botId, targetId]);
+    send: async (botId, targetId, text, opts) => {
+      sent.push(opts === undefined ? { botId, targetId, text } : { botId, targetId, text, opts });
       return { sent: true };
     },
   };
@@ -232,6 +237,7 @@ async function main(): Promise<void> {
   eq(okRec.state, 'sent', '服务直调成功');
   eq(okRec.attempts, 1, '一次成功');
   eq(sent.length, 1, '调用一次');
+  eq(sent[0]?.opts?.['format'], 'markdown', '推送以 markdown 格式下发（与 dsh-im 一致）');
   // 全部失败：重试上限 + failed 状态
   const alwaysFail: DshImLike = { send: async () => ({ sent: false }) };
   const pusherFail = new Pusher(() => alwaysFail, { httpPort: 59999, retryMax: 3 }, logger);
@@ -398,7 +404,12 @@ async function main(): Promise<void> {
   eq(fmtLines[2]!.endsWith('  '), false, '钉钉保真：不再补行尾双空格（钉钉不支持）');
   eq(fmtLines[4]!.startsWith('\u3000'), false, '钉钉保真：无缩进行不加全角');
   const fmtBlank = dingtalkFormatSafe('a\n\n\nb');
-  eq(fmtBlank, 'a\n\n\n\n\n\nb', '钉钉保真：原空行保留为空段（分隔语义不丢）');
+  eq(fmtBlank, 'a\n\n\nb', '钉钉保真：原空行保留为空段（分隔语义不丢）');
+  // markdown 结构不能被补空行拆坏（推送改 markdown 后的回归保护）
+  eq(dingtalkFormatSafe('```js\nconst a = 1;\nconst b = 2;\n```'), '```js\nconst a = 1;\nconst b = 2;\n```', '钉钉保真：围栏代码块内部不补空行');
+  eq(dingtalkFormatSafe('- 甲\n- 乙\n- 丙'), '- 甲\n- 乙\n- 丙', '钉钉保真：列表保持紧凑');
+  eq(dingtalkFormatSafe('| a | b |\n| --- | --- |\n| 1 | 2 |'), '| a | b |\n| --- | --- |\n| 1 | 2 |', '钉钉保真：表格行不断开');
+  eq(dingtalkFormatSafe('> 引用甲\n> 引用乙'), '> 引用甲\n> 引用乙', '钉钉保真：引用块保持紧凑');
   const withPrefix = buildPromptWithTags(tagged);
   ok(withPrefix.startsWith('【标签提示 · 报告】输出使用组级口径'), '执行提示注入到 Prompt 前');
   ok(withPrefix.endsWith('做一件事'), '原文完整保留在注入段之后');

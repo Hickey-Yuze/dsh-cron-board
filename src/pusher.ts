@@ -21,6 +21,14 @@ export interface PusherLogger {
 }
 
 const SERVICE_TIMEOUT_MS = 15_000;
+/**
+ * 推送格式：markdown。
+ * dsh-im 的 agent 回复走的就是 markdown（各渠道原生化渲染），主动投递的 `format` 字段
+ * 只接受 plain/markdown。markdown 路径由 dsh-im 自己负责渲染与超长分段（钉钉按
+ * chunkMarkdownParts 逐段发 sampleMarkdown），因此过长内容既不会被 cron-board 截断，
+ * 也不会撞平台单条上限。
+ */
+const PUSH_FORMAT = 'markdown';
 
 interface MetaBotLike {
   botId: string;
@@ -98,7 +106,10 @@ export class Pusher {
     const dshIm = this.resolveDshIm();
     if (dshIm && typeof dshIm.send === 'function') {
       try {
-        const r = await dshIm.send(botId, targetId, text, { signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS) });
+        const r = await dshIm.send(botId, targetId, text, {
+          signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+          format: PUSH_FORMAT,
+        });
         return { ok: r?.sent === true, channel: 'service', error: r?.sent === true ? undefined : '服务返回 sent=false' };
       } catch (err) {
         return { ok: false, channel: 'service', error: errDetail(err) };
@@ -108,7 +119,7 @@ export class Pusher {
       const res = await fetch(`http://127.0.0.1:${this.opts.httpPort}/api/dsh-im/delivery/messages`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ botId, targetId, text }),
+        body: JSON.stringify({ botId, targetId, text, format: PUSH_FORMAT }),
         signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
       });
       if (!res.ok) return { ok: false, channel: 'http', error: `HTTP ${res.status}` };
@@ -137,7 +148,7 @@ export class Pusher {
     return { state: 'failed', attempts: maxAttempts, channel, lastError };
   }
 
-  /** 终态简讯（zh/en）：状态头 + agent 回复正文（IM 清洗 + 截断）+ 失败原因。不落本地路径、不署名（用户要求）。 */
+  /** 终态简讯（zh/en）：状态头 + agent 回复正文（IM 清洗，不截断：markdown 推送由 dsh-im 分段）+ 失败原因。不落本地路径、不署名（用户要求）。 */
   briefFor(input: {
     ok: boolean;
     title: string;
@@ -150,7 +161,7 @@ export class Pusher {
   }): string {
     const lang = input.lang ?? 'zh';
     const dur = input.durationMs !== undefined ? fmtDuration(input.durationMs, lang) : undefined;
-    const body = clampBody(sanitizeForIm(input.content ?? ''));
+    const body = sanitizeForIm(input.content ?? '');
     if (lang === 'en') {
       const lines = [input.ok ? '✅ Cron task finished' : '❌ Cron task failed', `Task: ${input.title}`, `Status: ${input.status}`];
       if (dur !== undefined) lines.push(`Duration: ${dur}`);
@@ -181,17 +192,50 @@ export class Pusher {
  * 钉钉通道格式保真：钉钉把消息按 markdown 渲染——单换行不换行（行合并成段）、行首半角空格被吃。
  * 钉钉的 markdown 是简化实现：不支持行尾双空格硬换行（2026-10-01 用户实测无效），换行必须用 \n\n。
  * 对策：
- *  1) 连续换行折叠后，每行之间插入空行（\n\n）→ 模板每行独立成段；
+ *  1) 普通行之间插入空行（\n\n）→ 模板每行独立成段；
  *  2) 行首半角缩进 → 全角空格（U+3000，markdown 不视作缩进语法，原样保留）。
+ *
+ * 但 markdown 结构不能被这套补丁拆坏（推送改为 markdown 后必守）：
+ *  - 围栏代码块（``` / ~~~）内部的换行原样保留，否则代码块被当成普通正文并拆碎；
+ *  - 列表、引用、表格的连续行保持紧凑（单 \n），否则紧凑列表被拉成松散列表、表格行断开。
  */
 export function dingtalkFormatSafe(raw: string): string {
-  return raw
-    .split('\n')
-    .map((line) => {
-      const lead = /^ +/.exec(line)?.[0].length ?? 0;
-      return '\u3000'.repeat(lead) + line.slice(lead).trimEnd();
-    })
-    .join('\n\n');
+  const lines = raw.split('\n');
+  // 先标注每行是否处在围栏代码块内（开/闭围栏行本身也算"在块内"）。
+  const fenced: boolean[] = [];
+  let fence: string | null = null;
+  for (const line of lines) {
+    const probe = line.trimStart();
+    if (fence === null) {
+      const open = /^(`{3,}|~{3,})/.exec(probe);
+      const mark = open?.[1];
+      if (mark !== undefined) fence = mark;
+      fenced.push(fence !== null);
+      continue;
+    }
+    fenced.push(true);
+    if (probe.startsWith(fence)) fence = null;
+  }
+  const structural = (line: string): boolean =>
+    /^\s*(?:[-*+]|\d+[.)])\s/.test(line) || /^\s*>/.test(line) || /^\s*\|/.test(line);
+  const parts: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (i > 0) {
+      const prev = lines[i - 1] ?? '';
+      const keepTight =
+        fenced[i] === true ||
+        fenced[i - 1] === true ||
+        line.trim() === '' ||
+        prev.trim() === '' ||
+        structural(line) ||
+        structural(prev);
+      parts.push(keepTight ? '\n' : '\n\n');
+    }
+    const lead = /^ +/.exec(line)?.[0].length ?? 0;
+    parts.push('\u3000'.repeat(lead) + line.slice(lead).trimEnd());
+  }
+  return parts.join('');
 }
 
 /**
@@ -295,17 +339,6 @@ export function sanitizeForIm(text: string): string {
       return PLACEHOLDER;
     }
   });
-}
-
-/** 简讯正文的截断保护：按 UTF-8 字节算（dsh-im 微信通道单条 ~2048 字节即拆条，正文留 1200 字节）。 */
-function clampBody(content: string | undefined): string {
-  const raw = (content ?? '').trim();
-  if (raw === '') return '';
-  const MAX_BYTES = 1200;
-  if (Buffer.byteLength(raw, 'utf8') <= MAX_BYTES) return raw;
-  let cut = MAX_BYTES;
-  while (cut > 0 && Buffer.byteLength(raw.slice(0, cut), 'utf8') > MAX_BYTES - 3) cut--;
-  return `${raw.slice(0, cut)}…（内容过长已截断，全文见结果文件）`;
 }
 
 /** PushTestRecord 构造（看板测试推送用）。 */
