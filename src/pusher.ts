@@ -30,34 +30,6 @@ const SERVICE_TIMEOUT_MS = 15_000;
  */
 const PUSH_FORMAT = 'markdown';
 
-/**
- * 折叠锚点默认阈值（正文字符数）。超过此长度时在简讯正文开头插入「查看更多」提示，
- * 让 IM 侧用户知道正文被分段/可跳转到完整内容。
- */
-const DEFAULT_FOLD_ANCHOR_CHARS = 800;
-
-/**
- * 折叠锚点文案（zh/en）。
- *
- * 【为什么不用 <details>】钉钉/微信的 markdown 是简化实现，不支持 HTML 折叠标签
- * （dsh-im 5.5.0 的 channels/dingtalk、channels/weixin 渲染路径均无 HTML 解析）。
- * 因此锚点只能用「纯 markdown 链接 + 目标标记」的通用形态：
- *   - 支持链接的通道渲染为可点击的「查看更多」；
- *   - 不支持链接的通道（微信纯文本）退化为一行提示文字，语义不丢。
- */
-const FOLD_ANCHOR = {
-  zh: {
-    marker: '查看更多',
-    hint: '👇 查看更多（向下滚动查看全文）',
-    target: '展开全文',
-  },
-  en: {
-    marker: 'View more',
-    hint: '👇 View more (scroll down for the full text)',
-    target: 'Full text',
-  },
-} as const;
-
 interface MetaBotLike {
   botId: string;
   channel?: string;
@@ -74,7 +46,7 @@ interface MetaTargetLike {
 export class Pusher {
   constructor(
     private readonly resolveDshIm: () => DshImLike | undefined,
-    private readonly opts: { httpPort: number; retryMax: number; foldAnchorChars?: number },
+    private readonly opts: { httpPort: number; retryMax: number },
     private readonly log: PusherLogger,
   ) {}
 
@@ -186,22 +158,15 @@ export class Pusher {
     reason?: string;
     content?: string;
     lang?: 'zh' | 'en';
-    /** 正文折叠锚点阈值（字符数）；0 = 不插入。缺省用配置值。 */
-    foldAnchorChars?: number;
   }): string {
     const lang = input.lang ?? 'zh';
     const dur = input.durationMs !== undefined ? fmtDuration(input.durationMs, lang) : undefined;
-    const rawBody = sanitizeForIm(input.content ?? '');
-    const threshold = input.foldAnchorChars ?? this.opts.foldAnchorChars ?? DEFAULT_FOLD_ANCHOR_CHARS;
-    const anchor = foldAnchorFor(rawBody, threshold, lang);
-    // 锚点存在时，正文末尾补同名标记，使锚点链接有真实落点。
-    const body = anchor !== undefined ? `${rawBody}\n\n# ${foldAnchorTarget(lang)}` : rawBody;
+    const body = sanitizeForIm(input.content ?? '');
     if (lang === 'en') {
       const lines = [input.ok ? '✅ Cron task finished' : '❌ Cron task failed', `Task: ${input.title}`, `Status: ${input.status}`];
       if (dur !== undefined) lines.push(`Duration: ${dur}`);
       lines.push('');
-      if (anchor !== undefined) lines.push(anchor, '');
-      if (rawBody !== '') lines.push(body);
+      if (body !== '') lines.push(body);
       else if (input.resultPath !== undefined) lines.push(`Result archived: ${input.resultPath}`);
       if (!input.ok && input.reason !== undefined) lines.push(`Reason: ${input.reason}`);
       return lines.join('\n');
@@ -213,10 +178,7 @@ export class Pusher {
     ];
     if (dur !== undefined) lines.push(`耗时：${dur}`);
     lines.push('');
-    if (anchor !== undefined) {
-      lines.push(anchor, '');
-    }
-    if (rawBody !== '') {
+    if (body !== '') {
       lines.push(body);
     } else if (input.resultPath !== undefined) {
       lines.push(`结果已存档：${input.resultPath}`);
@@ -224,36 +186,6 @@ export class Pusher {
     if (!input.ok && input.reason !== undefined) lines.push(`失败原因：${input.reason}`);
     return lines.join('\n');
   }
-}
-
-/**
- * 生成「查看更多/展开全文」折叠锚点。
- *
- * 语义：正文超过阈值 → 在正文开头插入一行锚点，并在正文末尾追加同名标记，
- * 两者构成一个「从这里跳到全文末尾」的锚点对。
- * - 通道支持 markdown 链接 → 渲染为可点击的「查看更多」，点击跳到末尾标记；
- * - 通道不支持链接（微信纯文本）→ 退化为提示文字，读者向下滚动即可看到全文。
- *
- * 为什么不真正折叠：钉钉/微信 markdown 均不解析 HTML，`<details>` 会被当纯文本显示；
- * 真正的折叠由各 IM 客户端对长消息的原生处理承担，本锚点只提供
- * 明确的「从这里往下是全文」的可读结构，不做内容截断。
- *
- * @returns 锚点行；未达阈值或阈值为 0 → undefined（不插入）。
- */
-export function foldAnchorFor(
-  body: string,
-  threshold: number,
-  lang: 'zh' | 'en' = 'zh',
-): string | undefined {
-  if (!Number.isFinite(threshold) || threshold <= 0) return undefined;
-  if (body.length <= threshold) return undefined;
-  const t = FOLD_ANCHOR[lang];
-  return `${t.hint}\n\n[${t.marker}](#${encodeURIComponent(t.target)})`;
-}
-
-/** 折叠锚点的目标标记（正文末尾追加，与锚点链接的 target 一致）。 */
-export function foldAnchorTarget(lang: 'zh' | 'en' = 'zh'): string {
-  return FOLD_ANCHOR[lang].target;
 }
 
 /**
