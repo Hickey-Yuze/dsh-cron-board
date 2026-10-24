@@ -245,9 +245,41 @@ export function dingtalkFormatSafe(raw: string): string {
  * 文本字段里的 markdown 标记（粗体/链接）原样保留（dsh-im 通道可渲染）。
  * 解析失败则整段替换为占位提示。完整全文始终以结果文件为准。
  */
-const DSH_UI_FENCE = /```dsh-ui[^\n]*\n([\s\S]*?)```/g;
+const DSH_UI_FENCE = /```dsh-ui(?:[ \t][^\n`{]*)?[ \t]*\n?([\s\S]*?)```/g;
 
-/** GenUI 组件 → 可读文本行（避免逐字段拆散）。 */
+/**
+ * 从围栏正文里扫描出第一个花括号配对完整的 JSON 对象。
+ * 模型常把 JSON 与说明文字混写在同一围栏里（或 JSON 与 ``` 同行），
+ * 直接 JSON.parse 会失败，必须按配对扫描取第一个完整对象。
+ */
+function extractJsonObject(raw: string): string | undefined {
+  const start = raw.indexOf('{');
+  if (start < 0) return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i] as string;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return raw.slice(start, i + 1);
+    }
+  }
+  return undefined;
+}
+
+/** GenUI 组件 → markdown 行（保持 markdown 结构，便于 IM 侧渲染）。 */
 function nodeToLines(node: unknown): string[] {
   if (typeof node === 'string') {
     const v = node.trim();
@@ -264,12 +296,30 @@ function nodeToLines(node: unknown): string[] {
   };
   const pair = (a: string, b: string): string[] => (a !== '' && b !== '' ? [`${a}：${b}`] : [a, b].filter((x) => x !== ''));
   switch (o.type) {
-    case 'copy':
-      return pair(s('label'), s('text'));
-    case 'callout':
-      return pair(s('title'), s('content'));
-    case 'stat':
-      return [[s('label'), s('value'), s('delta')].filter((x) => x !== '').join('：')].filter((x) => x !== '');
+    case 'text': {
+      const body = s('content') || s('text');
+      return body === '' ? [] : [body];
+    }
+    case 'copy': {
+      const label = s('label');
+      const text = s('text');
+      if (label === '' && text === '') return [];
+      if (label === '') return [text];
+      if (text === '') return [`**${label}**`];
+      return [`**${label}**：${text}`];
+    }
+    case 'callout': {
+      const title = s('title');
+      const body = s('content') || s('text');
+      if (title === '' && body === '') return [];
+      const head = title === '' ? '' : `**${title}**`;
+      const merged = [head, body].filter((x) => x !== '').join('：');
+      return merged.split('\n').map((line) => `> ${line}`);
+    }
+    case 'stat': {
+      const parts = [s('label'), s('value'), s('delta')].filter((x) => x !== '');
+      return parts.length === 0 ? [] : [parts.join('：')];
+    }
     case 'keyvalue': {
       if (!Array.isArray(o.pairs)) return [];
       return o.pairs.flatMap((p) => {
@@ -277,7 +327,10 @@ function nodeToLines(node: unknown): string[] {
         const po = p as Record<string, unknown>;
         const k = po.key === undefined ? '' : String(po.key).trim();
         const v = po.value === undefined ? '' : String(po.value).trim();
-        return pair(k, v);
+        if (k === '' && v === '') return [];
+        if (k === '') return [v];
+        if (v === '') return [`- **${k}**`];
+        return [`- **${k}**：${v}`];
       });
     }
     case 'table': {
@@ -293,14 +346,19 @@ function nodeToLines(node: unknown): string[] {
             .filter((x) => x !== '')
         : [];
       const rows = Array.isArray(o.rows)
-        ? o.rows.map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? '')).join(' ｜ ') : nodeToLines(r).join(' ｜ ')))
+        ? o.rows.map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? '')) : [nodeToLines(r).join(' / ')]))
         : [];
-      const lines: string[] = [];
-      if (cols.length > 0) lines.push(cols.join(' ｜ '));
-      lines.push(...rows.filter((x) => x !== ''));
+      if (cols.length === 0) return rows.flatMap((r) => r.map((c) => c));
+      const cell = (v: string): string => v.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const lines = [`| ${cols.map(cell).join(' | ')} |`, `| ${cols.map(() => '---').join(' | ')} |`];
+      for (const r of rows) {
+        const cells = cols.map((_, i) => cell(r[i] ?? ''));
+        lines.push(`| ${cells.join(' | ')} |`);
+      }
       return lines;
     }
     case 'divider':
+      return ['---'];
     case 'spacer':
       return [];
     default: {
@@ -323,21 +381,30 @@ function nodeToLines(node: unknown): string[] {
 export function sanitizeForIm(text: string): string {
   const PLACEHOLDER = '（附一段界面卡片内容，已省略——全文见结果文件）';
   return text.replace(DSH_UI_FENCE, (_m, body: string) => {
-    try {
-      const spec = JSON.parse(body) as Record<string, unknown>;
-      const head = typeof spec.title === 'string' && spec.title.trim() !== '' ? [spec.title.trim()] : [];
-      const lines = [
-        ...head,
-        ...(Array.isArray(spec.items) ? spec.items.flatMap((x) => nodeToLines(x)) : nodeToLines(spec)),
-      ];
-      const joined = lines
-        .filter((x) => x !== '')
-        .join('\n')
-        .trim();
-      return joined !== '' ? joined : PLACEHOLDER;
-    } catch {
-      return PLACEHOLDER;
+    let spec: Record<string, unknown> | undefined;
+    for (const candidate of [body, extractJsonObject(body) ?? '']) {
+      if (candidate === '') continue;
+      try {
+        const parsed = JSON.parse(candidate) as unknown;
+        if (parsed !== null && typeof parsed === 'object') {
+          spec = parsed as Record<string, unknown>;
+          break;
+        }
+      } catch {
+        // 继续尝试下一个候选
+      }
     }
+    if (spec === undefined) return PLACEHOLDER;
+    const head = typeof spec.title === 'string' && spec.title.trim() !== '' ? [spec.title.trim()] : [];
+    const lines = [
+      ...head,
+      ...(Array.isArray(spec.items) ? spec.items.flatMap((x) => nodeToLines(x)) : nodeToLines(spec)),
+    ];
+    const joined = lines
+      .filter((x) => x !== '')
+      .join('\n')
+      .trim();
+    return joined !== '' ? joined : PLACEHOLDER;
   });
 }
 

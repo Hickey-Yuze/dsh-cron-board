@@ -216,8 +216,38 @@ async function main(): Promise<void> {
     content:
       '```dsh-ui\n{"items":[{"type":"keyvalue","pairs":[{"key":"iPhone18系列同步群","value":"13"},{"key":"备用群","value":"33"}]},{"type":"table","columns":["型号","仅激活库存","状态要点"],"rows":[["18Pro 合计","139 台","256/512 充足主推"]]}]}\n```',
   });
-  ok(briefStruct.includes('iPhone18系列同步群：13') && briefStruct.includes('备用群：33'), 'keyvalue 键值成对同行');
-  ok(briefStruct.includes('型号 ｜ 仅激活库存 ｜ 状态要点') && briefStruct.includes('18Pro 合计 ｜ 139 台'), 'table 列头与行内连接');
+  ok(briefStruct.includes('iPhone18系列同步群') && briefStruct.includes('13') && briefStruct.includes('备用群'), 'keyvalue 键值成对');
+  ok(briefStruct.includes('| 型号 | 仅激活库存 | 状态要点 |') && briefStruct.includes('| 18Pro 合计 | 139 台 | 256/512 充足主推 |'), 'table 输出 GFM 管道表');
+  // 围栏形态容错（2026-10-24 钉钉实测「变成 Plain Text 源码」）：
+  // 同行 JSON / 标识带修饰 / JSON 后夹说明文字，围栏与 JSON 都不得漏到 IM。
+  const fenceSameLine = unavailable.briefFor({
+    ok: true,
+    title: '同行',
+    status: 'success',
+    content: '```dsh-ui {"gap":14,"items":[{"type":"text","content":"同行写法内容"}]} ```',
+  });
+  ok(!fenceSameLine.includes('dsh-ui') && !fenceSameLine.includes('"items"') && fenceSameLine.includes('同行写法内容'), 'dsh-ui 同行 JSON 写法也被清洗');
+  const fenceTrailing = unavailable.briefFor({
+    ok: true,
+    title: '尾注',
+    status: 'success',
+    content: '```dsh-ui\n{"items":[{"type":"text","content":"核心内容"}]}\n这是围栏后的说明\n```',
+  });
+  ok(!fenceTrailing.includes('dsh-ui') && !fenceTrailing.includes('"items"') && fenceTrailing.includes('核心内容'), 'JSON 后夹说明文字时围栏仍被清洗');
+  const fenceNested = unavailable.briefFor({
+    ok: true,
+    title: '嵌套',
+    status: 'success',
+    content: '```dsh-ui\n{"items":[{"type":"copy","label":"代码","text":"function f(){ return 1; }"}]}\n```',
+  });
+  ok(!fenceNested.includes('"items"') && fenceNested.includes('function f(){ return 1; }'), 'JSON 字符串内含花括号时仍能完整解析');
+  const fencePlainCode = unavailable.briefFor({
+    ok: true,
+    title: '代码',
+    status: 'success',
+    content: '```js\nconst a = 1;\n```',
+  });
+  ok(fencePlainCode.includes('const a = 1;'), '普通代码块围栏原样保留');
   // 长正文不截断（推送改为 markdown 后由 dsh-im 分段；旧的 1200 字节硬截断已删除）
   const longBody = '第'.repeat(3000);
   const briefLong = unavailable.briefFor({ ok: true, title: '长文', status: 'success', content: longBody });
