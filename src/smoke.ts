@@ -12,7 +12,7 @@ import type { Execution, TaskRow } from './contract.js';
 import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import { LedgerStore, type BoardTask } from './ledger.js';
 import { extractJsonObject } from './parse.js';
-import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
+import { Pusher, dingtalkFormatSafe, foldAnchorFor, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeTags } from './rpc.js';
 import { resolveBadgeColor } from './contract.js';
@@ -253,6 +253,49 @@ async function main(): Promise<void> {
   const briefLong = unavailable.briefFor({ ok: true, title: '长文', status: 'success', content: longBody });
   ok(briefLong.includes(longBody), '长正文完整保留，不做本地截断');
   ok(!briefLong.includes('内容过长已截断'), '不再出现「内容过长已截断」提示');
+  // 折叠锚点：正文超阈值 → 正文前插入「查看更多」；不超阈值 → 不插入
+  {
+    const anchorBrief = unavailable.briefFor({
+      ok: true,
+      title: '长文',
+      status: 'success',
+      content: longBody,
+      foldAnchorChars: 800,
+    });
+    ok(anchorBrief.includes('查看更多'), '超阈值正文插入「查看更多」锚点');
+    ok(anchorBrief.indexOf('查看更多') < anchorBrief.indexOf(longBody.slice(0, 40)), '锚点位于正文之前');
+    ok(anchorBrief.includes(longBody), '插入锚点后正文仍完整保留');
+    const shortBrief = unavailable.briefFor({
+      ok: true,
+      title: '短文',
+      status: 'success',
+      content: '很短。',
+      foldAnchorChars: 800,
+    });
+    ok(!shortBrief.includes('查看更多'), '未超阈值不插入锚点');
+    const offBrief = unavailable.briefFor({
+      ok: true,
+      title: '长文',
+      status: 'success',
+      content: longBody,
+      foldAnchorChars: 0,
+    });
+    ok(!offBrief.includes('查看更多'), '阈值为 0 关闭锚点');
+    const enAnchor = unavailable.briefFor({
+      ok: true,
+      title: 'long',
+      status: 'success',
+      content: longBody,
+      lang: 'en',
+      foldAnchorChars: 800,
+    });
+    ok(enAnchor.includes('View more'), '英文锚点文案');
+  }
+  // 锚点函数单元断言
+  eq(foldAnchorFor('短', 800), undefined, '锚点函数：未超阈值返回 undefined');
+  eq(foldAnchorFor('长'.repeat(100), 800), undefined, '锚点函数：阈值 0 返回 undefined');
+  eq(foldAnchorFor('长'.repeat(100), 10, 'zh')?.includes('查看更多'), true, '锚点函数：超阈值生成锚点');
+  eq(foldAnchorFor('长'.repeat(100), 10, 'en')?.includes('View more'), true, '锚点函数：英文锚点');
   // 服务直调成功（并校验 format 透传给 dsh-im）
   const sent: Array<{ botId: string; targetId: string; text: string; opts?: Record<string, unknown> }> = [];
   const svc: DshImLike = {

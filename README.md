@@ -36,10 +36,11 @@ dsh plugin --profile web add link:~/.dsh/cron-board-src
 | `schedulerTickMs` | `30000` | 调度扫描间隔 |
 | `runTimeoutMin` | `60` | 单次执行超时（分钟），超时 cancel |
 | `resultsKeepPerTask` | `20` | 每任务结果文件保留数 |
-| `executionsKeepPerTask` | `20` | 每任务执行记录保留数 |
+| `executionsKeepPerTask` | `50` | 每任务执行记录保留数 |
 | `defaultPermission` | `read-only` | 默认权限档（确认门基准） |
 | `push.httpPort` | `3080` | dsh-im HTTP 回退端口 |
 | `push.retryMax` | `3` | 推送重试上限（退避 1s/2s/4s） |
+| `push.foldAnchorChars` | `800` | 正文超过该字符数时自动插入「查看更多」折叠锚点（`0` = 关闭） |
 
 ## 使用
 

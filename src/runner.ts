@@ -599,6 +599,7 @@ export class TaskRunner {
         resultPath: exec.resultPath,
         reason: exec.exitReason,
         content: await readResultBody(exec.resultPath),
+        foldAnchorChars: this.config.push.foldAnchorChars,
       }),
     );
     await this.ledger.mutate((doc) => {

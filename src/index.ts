@@ -64,7 +64,7 @@ export async function apply(ctx: Context, config: CronBoardConfig): Promise<void
   const results = new ResultStore(dataDir);
   const pusher = new Pusher(
     () => ctx.get('dshIm') as unknown as DshImLike | undefined,
-    { httpPort: config.push.httpPort, retryMax: config.push.retryMax },
+    { httpPort: config.push.httpPort, retryMax: config.push.retryMax, foldAnchorChars: config.push.foldAnchorChars },
     log,
   );
   const runner = new TaskRunner(ctx, ledger, results, pusher, config, log);

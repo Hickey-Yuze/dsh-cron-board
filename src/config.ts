@@ -27,6 +27,8 @@ export interface CronBoardConfig {
   push: {
     httpPort: number;
     retryMax: number;
+    /** 正文超过该长度时在开头插入「查看更多/展开全文」折叠锚点（0 = 关闭）。 */
+    foldAnchorChars: number;
   };
 }
 
@@ -51,6 +53,7 @@ function buildSchema(SchemaCtor: any): unknown {
       push: SchemaCtor.object({
         httpPort: SchemaCtor.number().default(3080).description('dsh-im HTTP 回退端口'),
         retryMax: SchemaCtor.number().default(3).description('推送重试上限'),
+        foldAnchorChars: SchemaCtor.number().default(800).description('正文超过该字符数时插入「查看更多」折叠锚点（0=关闭）'),
       }).description('推送'),
     }),
   ]);
@@ -64,7 +67,7 @@ function fallbackSchema(): unknown {
     resultsKeepPerTask: 20,
     executionsKeepPerTask: 50,
     defaultPermission: 'read-only',
-    push: { httpPort: 3080, retryMax: 3 },
+    push: { httpPort: 3080, retryMax: 3, foldAnchorChars: 800 },
   };
   return {
     '~standard': {
