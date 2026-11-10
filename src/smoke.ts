@@ -12,7 +12,9 @@ import type { Execution, TaskRow } from './contract.js';
 import { LedgerStore, type BoardTask } from './ledger.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
-import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeTags } from './rpc.js';
+import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeSkillNames, normalizeTags } from './rpc.js';
+import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, SKILLS_INJECT_HEADER, collectSkills, renderSelectedSkills, renderSkillContent } from './skills.js';
+import type { Context } from '@deepseek-ai/cordis';
 import { resolveBadgeColor } from './contract.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
 import { newSessionId, newTaskId } from './util.js';
@@ -481,6 +483,49 @@ async function main(): Promise<void> {
   if (artifact !== '') {
     ok(artifact.includes('cron-board/check-update'), '版本检查端点接线');
     ok(artifact.includes('dsh-cb-ver-hot'), '更新徽章样式接线');
+  }
+
+  // ── 12. 技能/专家注入（v1.5.0）：渲染格式 / 名称校验 / 降级 / 上限 ──
+  section = 12;
+  const rendered = renderSkillContent({ name: 'demo-skill', description: '演示', content: '# 正文' });
+  ok(rendered.includes('<skill_content name="demo-skill">'), '渲染：skill_content 起始标签');
+  ok(rendered.includes('<skill_instructions>'), '渲染：instructions 标签');
+  ok(rendered.includes('# 正文'), '渲染：正文原样保留');
+  ok(rendered.includes('</skill_content>'), '渲染：结束标签');
+  ok(
+    renderSkillContent({ name: 'x', content: 'c', resourceBase: { kind: 'directory', path: '/tmp/sk' } }).includes(
+      'Base directory for this skill: /tmp/sk',
+    ),
+    '渲染：directory 资源目录提示',
+  );
+  ok(SKILL_NAME_RE.test('demo-skill'), '名称：合法连字符名');
+  ok(SKILL_NAME_RE.test('12306'), '名称：纯数字合法');
+  ok(!SKILL_NAME_RE.test('Demo_Skill'), '名称：大写与下划线非法');
+  ok(!SKILL_NAME_RE.test('a b'), '名称：空格非法');
+  eq(SKILLS_INJECT_HEADER.includes('定时任务配置注入'), true, '注入前缀说明来源');
+
+  // 无 skills 服务时全链路优雅降级（宿主没有该服务也必须能跑）
+  const bareCtx = { get: () => undefined } as unknown as Context;
+  eq((await collectSkills(bareCtx)).length, 0, '降级：无服务时技能清单为空');
+  eq(await renderSelectedSkills(bareCtx, undefined), '', '降级：未选技能返回空串');
+  eq(await renderSelectedSkills(bareCtx, ['demo-skill']), '', '降级：有选择但无服务返回空串');
+
+  // 名称归一化：去空白 / 去重 / 非法名拒绝 / 超限拒绝 / 空数组归 undefined
+  eq(JSON.stringify(normalizeSkillNames([' demo-skill ', 'demo-skill'])), '["demo-skill"]', '归一化：去空白并去重');
+  eq(normalizeSkillNames([]), undefined, '归一化：空数组归 undefined');
+  eq(normalizeSkillNames(undefined), undefined, '归一化：undefined 保持');
+  throws(() => normalizeSkillNames(['Demo_Skill']), '归一化：非法名拒绝');
+  throws(() => normalizeSkillNames(['a b']), '归一化：含空格拒绝');
+  throws(() => normalizeSkillNames([1]), '归一化：非字符串拒绝');
+  throws(() => normalizeSkillNames('demo-skill'), '归一化：非数组拒绝');
+  throws(
+    () => normalizeSkillNames(['s1', 's2', 's3', 's4', 's5']),
+    `归一化：超过 ${MAX_SELECTED_SKILLS} 个拒绝`,
+  );
+
+  if (artifact !== '') {
+    ok(artifact.includes('dsh-cb-skillchip'), '技能选择器样式接线');
+    ok(artifact.includes('cron-board/meta'), 'meta 端点接线');
   }
 
   console.log(`smoke: all sections passed (${logs.length} log lines)`);

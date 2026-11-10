@@ -21,6 +21,7 @@ import type { Execution, PermissionPreset, TaskRow } from './contract.js';
 import { LedgerStore } from './ledger.js';
 import type { DshImLike, Pusher } from './pusher.js';
 import type { ResultStore } from './results.js';
+import { SKILLS_INJECT_HEADER, renderSelectedSkills } from './skills.js';
 import { errDetail, newExecId, newSessionId } from './util.js';
 
 let dshLlmModule: typeof dshLlm | undefined;
@@ -434,11 +435,24 @@ export class TaskRunner {
           wake();
         }
       });
+      // 5.1 技能/专家正文注入：取不到（服务缺失/名字失效）只警告，不影响任务本身。
+      let skillText = '';
+      if ((task.pinned.skillNames ?? []).length > 0) {
+        try {
+          skillText = await renderSelectedSkills(this.ctx, task.pinned.skillNames, wsPath);
+        } catch (err) {
+          this.log.warn(`[cron-board] 技能注入失败（非致命）: ${errDetail(err)}`);
+        }
+      }
+      const promptText =
+        skillText === ''
+          ? buildPromptWithTags(task)
+          : `${SKILLS_INJECT_HEADER}\n\n${skillText}\n\n${buildPromptWithTags(task)}`;
       try {
         agent.followup(
           requireDshLlm().createUserMessage({
             content: [
-              { type: 'text', text: buildPromptWithTags(task) },
+              { type: 'text', text: promptText },
               // 任务图片（durable ref）：dsh-llm ImageBlock 官方形状，随 Prompt 发给模型
               ...(task.promptImageRefs ?? []).map((ref) => ({ type: 'image' as const, attachment: ref })),
             ],

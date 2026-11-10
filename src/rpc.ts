@@ -27,6 +27,28 @@ import type { ResultStore } from './results.js';
 import type { TaskRunner } from './runner.js';
 import { errDetail, newTaskId } from './util.js';
 import { checkUpdate } from './version.js';
+import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, collectSkills } from './skills.js';
+
+/**
+ * 归一化任务要注入的技能名：非法/超量一律 fail，空数组视为「不注入」。
+ * 名字必须符合宿主 SKILL_NAME 规则，否则执行期取不到正文。
+ */
+export function normalizeSkillNames(raw: unknown): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) fail('bad-request', 'skillNames 必须为数组');
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== 'string') fail('bad-request', 'skillNames 的每一项必须是字符串');
+    const name = item.trim();
+    if (name === '' || seen.has(name)) continue;
+    if (!SKILL_NAME_RE.test(name)) fail('bad-request', `技能名不合法: ${name}`);
+    if (out.length >= MAX_SELECTED_SKILLS) fail('bad-request', `技能/专家最多选择 ${MAX_SELECTED_SKILLS} 个`);
+    seen.add(name);
+    out.push(name);
+  }
+  return out.length > 0 ? out : undefined;
+}
 
 interface HttpRequestLike {
   url?: string;
@@ -209,6 +231,7 @@ export function normalizeDraft(raw: unknown): TaskDraft {
         p.workspaceId === undefined || p.workspaceId === null || p.workspaceId === '' ? undefined : asId(p.workspaceId, 'workspaceId'),
       presetId: p.presetId === undefined || p.presetId === null || p.presetId === '' ? undefined : asString(p.presetId, 'presetId', 128),
       permission: asPermission(p.permission),
+      skillNames: normalizeSkillNames(p.skillNames),
     };
   }
   const push = r.push === undefined ? undefined : asPushTarget(r.push);
@@ -400,6 +423,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           pushAvailable: deps.pusher.channelView().mode !== 'unavailable',
           pushMode: deps.pusher.channelView().mode,
           version,
+          skills: [],
         };
         try {
           const reg = ctx.get('workspaceRegistry') as unknown as
@@ -431,6 +455,12 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           }
         } catch (err) {
           deps.log.warn(`[cron-board] meta.bots 失败: ${errDetail(err)}`);
+        }
+        try {
+          // 只列用户级全局技能；工作区级技能在执行期按任务 cwd 取正文。
+          view.skills = await collectSkills(ctx);
+        } catch (err) {
+          deps.log.warn(`[cron-board] meta.skills 失败: ${errDetail(err)}`);
         }
         return view;
       }

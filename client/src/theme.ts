@@ -792,6 +792,26 @@ const CSS = `
 .dsh-cb-tagchip-x:hover { background: rgba(20, 20, 30, 0.07); color: var(--dsh-cb-err); }
 .dsh-cb-tagaddrow { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; }
 
+/* 技能与专家选择 */
+.dsh-cb-skillpicker { display: flex; flex-direction: column; gap: 10px; }
+.dsh-cb-skillgroup { display: flex; flex-direction: column; gap: 6px; }
+.dsh-cb-skillgroup-title {
+  font-size: 11px; font-weight: 600; color: #a1a4ad; letter-spacing: 0.02em;
+}
+.dsh-cb-skillgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.dsh-cb-skillchip {
+  border: 1px solid var(--dsh-cb-border); background: var(--dsh-cb-card); color: var(--dsh-cb-text);
+  border-radius: 999px; padding: 4px 11px; font-size: 12px; line-height: 1.4;
+  white-space: nowrap; cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.dsh-cb-skillchip:hover:not(:disabled) { border-color: var(--dsh-cb-accent); color: var(--dsh-cb-accent); }
+.dsh-cb-skillchip-on {
+  border-color: var(--dsh-cb-accent); background: var(--dsh-cb-accent-light);
+  color: var(--dsh-cb-accent); font-weight: 600;
+}
+.dsh-cb-skillchip-off { opacity: 0.45; cursor: not-allowed; }
+
 /* 图片拖拽上传 */
 .dsh-cb-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;

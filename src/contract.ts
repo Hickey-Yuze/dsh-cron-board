@@ -14,6 +14,8 @@ export interface TaskPinned {
   workspaceId?: string;
   presetId?: string;
   permission?: PermissionPreset;
+  /** 随 Prompt 前置注入的技能/专家名（≤4；执行期按任务工作区 cwd 取正文）。 */
+  skillNames?: string[];
 }
 
 
@@ -114,6 +116,15 @@ export interface MetaPreset {
   title: string;
 }
 
+/** 可注入到任务的可选项：宿主「技能」与市场「专家」运行时同源，靠 kind 分组。 */
+export interface MetaSkill {
+  name: string;
+  description: string;
+  kind: 'skill' | 'expert';
+  /** 市场包的显示名（`.workbuddy-market.json` 的 title），缺失时 UI 回落 name。 */
+  title?: string;
+}
+
 export interface MetaBot {
   botId: string;
   channel?: string;
@@ -130,6 +141,8 @@ export interface MetaTarget {
 export interface MetaView {
   workspaces: MetaWorkspace[];
   presets: MetaPreset[];
+  /** 可注入任务的技能/专家（宿主 skills 服务缺失时为空数组）。 */
+  skills: MetaSkill[];
   bots: MetaBot[];
   targets: MetaTarget[];
   pushAvailable: boolean;

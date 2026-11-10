@@ -7,7 +7,7 @@
  */
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { BoardSnapshot, MetaView, TaskBadge, TaskTag, TaskView } from '../../src/contract.js';
+import type { BoardSnapshot, MetaSkill, MetaView, TaskBadge, TaskTag, TaskView } from '../../src/contract.js';
 import { BADGE_COLORS, BADGE_ICONS, BADGE_IMAGE_MAX_BYTES, BADGE_IMAGE_TYPES, IM_BADGE_ICONS, resolveBadgeColor } from '../../src/contract.js';
 import { CRON_CHANNEL_COLOR, invalidateLedgerMap } from './channelBadge.js';
 import { describeCron, isValidCron } from '../../src/cron.js';
@@ -135,6 +135,68 @@ function Section(props: { title: string; badge?: ReactNode; children?: ReactNode
   );
 }
 
+/** 技能/专家多选（按 kind 分组渲染 chip；点击切换，满 4 个后未选项禁用）。 */
+/** 单个任务最多可注入的技能/专家数（与服务端 MAX_SELECTED_SKILLS 保持一致）。 */
+const MAX_SKILLS = 4;
+
+function SkillPicker(props: {
+  skills: MetaSkill[];
+  selected: string[];
+  disabled: boolean;
+  onChange: (next: string[]) => void;
+  max: number;
+}): ReactElement {
+  const toggle = (name: string): void => {
+    if (props.disabled) return;
+    if (props.selected.includes(name)) {
+      props.onChange(props.selected.filter((x) => x !== name));
+      return;
+    }
+    if (props.selected.length >= props.max) return;
+    props.onChange(props.selected.concat([name]));
+  };
+  const group = (kind: 'skill' | 'expert', title: string): ReactElement | null => {
+    const items = props.skills.filter((s) => s.kind === kind);
+    if (items.length === 0) return null;
+    return createElement(
+      'div',
+      { className: 'dsh-cb-skillgroup' },
+      createElement('span', { className: 'dsh-cb-skillgroup-title' }, title),
+      createElement(
+        'div',
+        { className: 'dsh-cb-skillgrid' },
+        items.map((skill) => {
+          const on = props.selected.includes(skill.name);
+          const blocked = !on && (props.disabled || props.selected.length >= props.max);
+          const cls = on ? 'dsh-cb-skillchip dsh-cb-skillchip-on' : 'dsh-cb-skillchip';
+          return createElement(
+            'button',
+            {
+              type: 'button',
+              key: skill.name,
+              className: blocked && !on ? `${cls} dsh-cb-skillchip-off` : cls,
+              title: skill.description,
+              disabled: blocked,
+              onClick: () => toggle(skill.name),
+            },
+            skill.title ?? skill.name,
+          );
+        }),
+      ),
+    );
+  };
+  const body =
+    props.skills.length === 0
+      ? createElement('div', { className: 'dsh-cb-fieldhint' }, t('f.skillEmpty'))
+      : createElement(
+          'div',
+          { className: 'dsh-cb-skillpicker' },
+          group('skill', t('f.skillGroupSkill')),
+          group('expert', t('f.skillGroupExpert')),
+        );
+  return createElement('div', { className: 'dsh-cb-field' }, body);
+}
+
 /** 字段标签行（label 左 + hint 右）。 */
 function LabelRow(props: { label: string; hint?: string }): ReactElement {
   return createElement('div', { className: 'dsh-cb-labelrow' },
@@ -223,6 +285,7 @@ export function DetailModal(props: {
   const [enabled, setEnabled] = useState(src?.enabled ?? true);
   const [workspaceId, setWorkspaceId] = useState(src?.pinned.workspaceId ?? '');
   const [presetId, setPresetId] = useState(src?.pinned.presetId ?? '');
+  const [skillNames, setSkillNames] = useState<string[]>(src?.pinned.skillNames ?? []);
   const [permission, setPermission] = useState(src?.pinned.permission ?? '');
   const [pushKey, setPushKey] = useState(pushKeyOf(src?.push));
   const [reuseSession, setReuseSession] = useState(src?.reuseSession !== false);
@@ -296,6 +359,8 @@ export function DetailModal(props: {
             presetId: presetId === '' ? undefined : presetId,
             permission:
               permission === '' ? undefined : (permission as 'read-only' | 'workspace-write' | 'danger-full-access'),
+            // 空数组 = 清空注入（服务端把空数组归一为 undefined）
+            skillNames,
           },
           push: parsePushKey(pushKey),
           reuseSession,
@@ -523,6 +588,18 @@ export function DetailModal(props: {
               }),
             ),
           ),
+        ),
+
+        // ── 技能与专家 ──
+        createElement(Section, { title: t('f.skillSection'), badge: skillNames.length > 0 ? createElement(Badge, { tone: 'accent' }, String(skillNames.length)) : null },
+          createElement(LabelRow, { label: t('f.skillHint'), hint: skillNames.length >= MAX_SKILLS ? t('f.skillLimit') : undefined }),
+          createElement(SkillPicker, {
+            skills: props.meta?.skills ?? [],
+            selected: skillNames,
+            disabled: archived,
+            max: MAX_SKILLS,
+            onChange: setSkillNames,
+          }),
         ),
 
         // ── 权限与推送 ──
