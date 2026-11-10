@@ -792,25 +792,87 @@ const CSS = `
 .dsh-cb-tagchip-x:hover { background: rgba(20, 20, 30, 0.07); color: var(--dsh-cb-err); }
 .dsh-cb-tagaddrow { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; }
 
-/* 技能与专家选择 */
-.dsh-cb-skillpicker { display: flex; flex-direction: column; gap: 10px; }
-.dsh-cb-skillgroup { display: flex; flex-direction: column; gap: 6px; }
-.dsh-cb-skillgroup-title {
-  font-size: 11px; font-weight: 600; color: #a1a4ad; letter-spacing: 0.02em;
+/* 技能与专家下拉选择 */
+.dsh-cb-skilldrop { position: relative; }
+.dsh-cb-skilltrigger {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px;
+  box-sizing: border-box; padding: 4px 30px 4px 8px; text-align: left;
+  border: 1px solid var(--dsh-cb-border); border-radius: 8px;
+  background: var(--dsh-cb-card); color: var(--dsh-cb-text); font-size: 12px;
+  cursor: pointer; transition: border-color .15s ease;
 }
-.dsh-cb-skillgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.dsh-cb-skilltrigger:hover:not(:disabled) { border-color: var(--dsh-cb-accent); }
+.dsh-cb-skilltrigger:disabled { opacity: 0.55; cursor: not-allowed; }
+.dsh-cb-skilltrigger-open { border-color: var(--dsh-cb-accent); }
+.dsh-cb-skillplaceholder { color: #a1a4ad; padding-left: 2px; }
+.dsh-cb-skillcaret {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  color: #a1a4ad; font-size: 10px; pointer-events: none;
+}
+.dsh-cb-skillchips { display: flex; flex-wrap: wrap; gap: 4px; }
 .dsh-cb-skillchip {
-  border: 1px solid var(--dsh-cb-border); background: var(--dsh-cb-card); color: var(--dsh-cb-text);
-  border-radius: 999px; padding: 4px 11px; font-size: 12px; line-height: 1.4;
-  white-space: nowrap; cursor: pointer;
-  transition: border-color .15s ease, color .15s ease, background .15s ease;
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  border: 1px solid var(--dsh-cb-border); background: var(--dsh-cb-card);
+  border-radius: 6px; padding: 2px 4px 2px 3px; line-height: 1.3;
 }
-.dsh-cb-skillchip:hover:not(:disabled) { border-color: var(--dsh-cb-accent); color: var(--dsh-cb-accent); }
-.dsh-cb-skillchip-on {
-  border-color: var(--dsh-cb-accent); background: var(--dsh-cb-accent-light);
-  color: var(--dsh-cb-accent); font-weight: 600;
+.dsh-cb-skillchip-name {
+  font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.dsh-cb-skillchip-off { opacity: 0.45; cursor: not-allowed; }
+.dsh-cb-skillchip-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 4px; font-size: 12px; line-height: 1;
+  color: #a1a4ad; cursor: pointer; flex: none;
+}
+.dsh-cb-skillchip-x:hover { background: rgba(20, 20, 30, 0.07); color: var(--dsh-cb-err); }
+.dsh-cb-skillavatar {
+  width: 18px; height: 18px; border-radius: 5px; flex: none;
+  object-fit: cover; display: inline-block;
+}
+.dsh-cb-skillavatar-text {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; border: 1px solid transparent; box-sizing: border-box;
+}
+.dsh-cb-skillmenu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+  display: flex; flex-direction: column;
+  background: #ffffff; border: 1px solid var(--dsh-cb-border); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(16, 20, 34, 0.16); overflow: hidden;
+}
+.dsh-cb-skillsearch {
+  border: none; border-bottom: 1px solid var(--dsh-cb-border); outline: none;
+  padding: 8px 10px; font-size: 12px; color: var(--dsh-cb-text); background: #ffffff;
+  font-family: inherit;
+}
+.dsh-cb-skillsearch::placeholder { color: #b3b6be; }
+.dsh-cb-skilllist { max-height: 240px; overflow-y: auto; padding: 4px; }
+.dsh-cb-skillgroup { display: flex; flex-direction: column; gap: 1px; padding-bottom: 4px; }
+.dsh-cb-skillgroup-title {
+  font-size: 10.5px; font-weight: 600; color: #a1a4ad; letter-spacing: 0.02em;
+  padding: 6px 6px 3px;
+}
+.dsh-cb-skillrow {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  border: none; background: transparent; border-radius: 7px; padding: 6px;
+  text-align: left; cursor: pointer; font-family: inherit;
+  transition: background .12s ease;
+}
+.dsh-cb-skillrow:hover:not(:disabled) { background: rgba(20, 20, 30, 0.055); }
+.dsh-cb-skillrow-on { background: var(--dsh-cb-accent-light); }
+.dsh-cb-skillrow-off { opacity: 0.4; cursor: not-allowed; }
+.dsh-cb-skillrow-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.dsh-cb-skillrow-name {
+  font-size: 12.5px; color: var(--dsh-cb-text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.dsh-cb-skillrow-desc {
+  font-size: 11px; color: #a1a4ad; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.dsh-cb-skillrow-check { color: var(--dsh-cb-accent); font-size: 12px; flex: none; }
+.dsh-cb-skillfoot {
+  border-top: 1px solid var(--dsh-cb-border); padding: 6px 10px;
+  font-size: 10.5px; color: #a1a4ad; background: #fafbfc;
+}
 
 /* 图片拖拽上传 */
 .dsh-cb-drop {

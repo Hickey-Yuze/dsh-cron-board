@@ -13,7 +13,7 @@ import { LedgerStore, type BoardTask } from './ledger.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeSkillNames, normalizeTags } from './rpc.js';
-import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, SKILLS_INJECT_HEADER, collectSkills, renderSelectedSkills, renderSkillContent } from './skills.js';
+import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, SKILLS_INJECT_HEADER, collectSkills, marketDisplayMap, renderSelectedSkills, renderSkillContent } from './skills.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { resolveBadgeColor } from './contract.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
@@ -523,8 +523,31 @@ async function main(): Promise<void> {
     `归一化：超过 ${MAX_SELECTED_SKILLS} 个拒绝`,
   );
 
+  // 市场展示字段（中文岗位名 / emoji / 头像）：目录缺失时整段跳过，不让 CI 依赖本地市场缓存
+  const market = marketDisplayMap();
+  if (market.size === 0) {
+    console.log('smoke: 未找到市场 catalog，跳过展示字段断言');
+  } else {
+    const displays = [...market.values()];
+    ok(displays.some((d) => d.title !== undefined), '市场：解析出中文展示名');
+    ok(
+      displays.every((d) => d.kind === 'skill' || d.kind === 'expert'),
+      '市场：归类只有技能与专家两类',
+    );
+    ok(
+      displays.every((d) => d.avatarUrl === undefined || /^https?:\/\//i.test(d.avatarUrl)),
+      '市场：头像仅接受 http(s) 绝对地址',
+    );
+    ok(
+      displays.every((d) => d.title === undefined || d.title.trim() !== ''),
+      '市场：展示名不留空白字符串',
+    );
+  }
+
   if (artifact !== '') {
     ok(artifact.includes('dsh-cb-skillchip'), '技能选择器样式接线');
+    ok(artifact.includes('dsh-cb-skillmenu'), '技能下拉面板样式接线');
+    ok(artifact.includes('dsh-cb-skillavatar'), '技能头像降级样式接线');
     ok(artifact.includes('cron-board/meta'), 'meta 端点接线');
   }
 

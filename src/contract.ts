@@ -121,8 +121,12 @@ export interface MetaSkill {
   name: string;
   description: string;
   kind: 'skill' | 'expert';
-  /** 市场包的显示名（`.workbuddy-market.json` 的 title），缺失时 UI 回落 name。 */
+  /** 展示名：优先市场目录（专家取 profession、技能取 title），其次本地 marker 的 title，缺失时 UI 回落 name。 */
   title?: string;
+  /** 技能的市场 emoji（技能条目才有）。 */
+  emoji?: string;
+  /** 专家头像 URL（COS 绝对地址）；客户端加载失败时自行降级为 emoji/首字。 */
+  avatarUrl?: string;
 }
 
 export interface MetaBot {

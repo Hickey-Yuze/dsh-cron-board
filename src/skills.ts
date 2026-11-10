@@ -9,7 +9,8 @@
  *   靠技能目录下 `.workbuddy-market.json` 的 `kind` 区分，缺失即按 skill 处理。
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import type { MetaSkill } from './contract.js';
@@ -79,6 +80,87 @@ function readMarketMarker(skillPath: string | undefined): MarketMarker | undefin
   }
 }
 
+/** 市场目录里一个包的展示信息（只保留本插件要用的几样）。 */
+export interface MarketDisplay {
+  title?: string;
+  emoji?: string;
+  avatarUrl?: string;
+  /** 市场归类：没有本地 marker 的包靠它区分技能与专家。 */
+  kind?: 'skill' | 'expert';
+}
+
+interface MarketCatalog {
+  mtimeMs: number;
+  byName: Map<string, MarketDisplay>;
+}
+
+/**
+ * 市场目录缓存的进程内单例。
+ * catalog.json 有 1.6MB，meta 每次调用都重解析会拖慢弹层，故按 mtime 失效。
+ */
+let catalogCache: MarketCatalog | null = null;
+
+/** DSH 根目录：优先环境变量，回落 `~/.dsh`（与宿主一致）。 */
+function resolveDshHome(): string {
+  const fromEnv = process.env.DSH_HOME;
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') return fromEnv.trim();
+  return join(homedir(), '.dsh');
+}
+
+function pickText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * 读取市场 catalog，按包名索引展示信息。
+ *
+ * 显示名与 yuze-market 保持一致：专家取 `profession`（「干什么的」），
+ * 技能取 `title`——专家的 `title` 是人名，放在这里会让人认不出岗位。
+ *
+ * 导出仅为冒烟测试断言（展示名/头像/归类）；插件内部只经 `collectSkills` 间接使用。
+ */
+export function marketDisplayMap(): Map<string, MarketDisplay> {
+  const file = join(resolveDshHome(), 'workbuddy-market', 'cache', 'catalog.json');
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(file).mtimeMs;
+  } catch {
+    return new Map();
+  }
+  if (catalogCache !== null && catalogCache.mtimeMs === mtimeMs) return catalogCache.byName;
+  const byName = new Map<string, MarketDisplay>();
+  try {
+    const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (typeof raw !== 'object' || raw === null) return byName;
+    const sections = raw as { experts?: { items?: unknown }; skills?: { items?: unknown } };
+    const collect = (items: unknown, kind: 'expert' | 'skill'): void => {
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        if (typeof item !== 'object' || item === null) continue;
+        const rec = item as Record<string, unknown>;
+        const name = pickText(rec.name);
+        if (name === '' || byName.has(name)) continue;
+        const title =
+          kind === 'expert' ? pickText(rec.profession) || pickText(rec.title) : pickText(rec.title);
+        const emoji = pickText(rec.emoji);
+        const avatarUrl = pickText(rec.avatarUrl);
+        const display: MarketDisplay = { kind };
+        if (title !== '') display.title = title;
+        if (emoji !== '') display.emoji = emoji;
+        if (/^https?:\/\//i.test(avatarUrl)) display.avatarUrl = avatarUrl;
+        byName.set(name, display);
+      }
+    };
+    collect(sections.experts?.items, 'expert');
+    collect(sections.skills?.items, 'skill');
+  } catch {
+    // 目录损坏或格式变化：按「无市场信息」处理，meta 不该因此失败
+    return new Map();
+  }
+  catalogCache = { mtimeMs, byName };
+  return byName;
+}
+
 /** 纯函数：把单个技能定义渲染成宿主 `renderSkillContent` 同形状的文本。 */
 export function renderSkillContent(skill: SkillDefinitionLike): string {
   const name = typeof skill.name === 'string' ? skill.name : '';
@@ -122,6 +204,7 @@ export async function collectSkills(ctx: Context, cwd?: string): Promise<MetaSki
   } catch {
     return [];
   }
+  const market = marketDisplayMap();
   const out: MetaSkill[] = [];
   const seen = new Set<string>();
   for (const s of list) {
@@ -131,11 +214,17 @@ export async function collectSkills(ctx: Context, cwd?: string): Promise<MetaSki
     if (s.invocation?.userInvocable !== true) continue;
     seen.add(name);
     const marker = readMarketMarker(s.path);
+    const display = market.get(name);
+    // 市场目录优先（中文岗位名与 yuze-market 一致），其次本地 marker，最后 UI 回落 name
+    const title = display?.title ?? marker?.title;
     out.push({
       name,
       description: typeof s.description === 'string' ? s.description : '',
-      kind: marker?.kind === 'expert' ? 'expert' : 'skill',
-      ...(marker?.title === undefined ? {} : { title: marker.title }),
+      // 本地 marker 最可信（安装时写入），其次市场目录归类，最后按技能处理
+      kind: marker?.kind === 'expert' || (marker === undefined && display?.kind === 'expert') ? 'expert' : 'skill',
+      ...(title === undefined ? {} : { title }),
+      ...(display?.emoji === undefined ? {} : { emoji: display.emoji }),
+      ...(display?.avatarUrl === undefined ? {} : { avatarUrl: display.avatarUrl }),
     });
   }
   // 技能在前、专家在后，各自按名字排序，便于 UI 稳定分组

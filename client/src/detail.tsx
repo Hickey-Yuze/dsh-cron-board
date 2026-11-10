@@ -14,7 +14,7 @@ import { describeCron, isValidCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, fmtFuture, parsePushKey, pushKeyOf, pushOptionLabel } from './format.js';
 import { lang, t } from './i18n.js';
 import type { RpcFn } from './rpc.js';
-import { Badge, ErrorBox, Select, TagBadge, TextArea, TextInput } from './ui.js';
+import { Badge, ErrorBox, Select, TagBadge, TextArea, TextInput, tagHue } from './ui.js';
 
 /**
  * Portal 挂载点：弹层渲染进 document.body，脱离看板容器。
@@ -135,10 +135,51 @@ function Section(props: { title: string; badge?: ReactNode; children?: ReactNode
   );
 }
 
-/** 技能/专家多选（按 kind 分组渲染 chip；点击切换，满 4 个后未选项禁用）。 */
 /** 单个任务最多可注入的技能/专家数（与服务端 MAX_SELECTED_SKILLS 保持一致）。 */
 const MAX_SKILLS = 4;
 
+/** 技能的展示名：市场目录中文名 → 本地 marker title → 目录名。 */
+function skillLabel(skill: MetaSkill): string {
+  return skill.title ?? skill.name;
+}
+
+/**
+ * 技能/专家头像块：有市场头像用 img，加载失败或缺图降级成 emoji / 首字（哈希色调底）。
+ * 头像走 COS 绝对地址，宿主 CSP 若拦截则 onError 落到降级分支，不会出现破图占位。
+ */
+function SkillAvatar(props: { skill: MetaSkill }): ReactElement {
+  const [broken, setBroken] = useState(false);
+  const url = props.skill.avatarUrl;
+  if (url !== undefined && !broken) {
+    return createElement('img', {
+      className: 'dsh-cb-skillavatar',
+      src: url,
+      alt: '',
+      loading: 'lazy',
+      referrerPolicy: 'no-referrer',
+      onError: () => setBroken(true),
+    });
+  }
+  const text = props.skill.emoji ?? skillLabel(props.skill).slice(0, 1).toUpperCase();
+  const hue = tagHue(props.skill.name);
+  return createElement(
+    'span',
+    {
+      className: 'dsh-cb-skillavatar dsh-cb-skillavatar-text',
+      style: {
+        color: `hsl(${hue} 55% 38%)`,
+        background: `hsl(${hue} 70% 93%)`,
+        borderColor: `hsl(${hue} 45% 84%)`,
+      },
+    },
+    text,
+  );
+}
+
+/**
+ * 技能/专家选择器（下拉）：触发区展示已选（带 logo），面板按 kind 分组 + 搜索。
+ * 用下拉而非 chip 网格，因为装了 30+ 技能后网格会把弹层撑到一屏以上。
+ */
 function SkillPicker(props: {
   skills: MetaSkill[];
   selected: string[];
@@ -146,6 +187,29 @@ function SkillPicker(props: {
   onChange: (next: string[]) => void;
   max: number;
 }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  // 点击面板之外 / Esc 关闭（面板在弹层内部渲染，不 portal，故用 contains 判定）
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event): void => {
+      const box = boxRef.current;
+      if (box !== null && e.target instanceof Node && box.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   const toggle = (name: string): void => {
     if (props.disabled) return;
     if (props.selected.includes(name)) {
@@ -155,44 +219,124 @@ function SkillPicker(props: {
     if (props.selected.length >= props.max) return;
     props.onChange(props.selected.concat([name]));
   };
+  const remove = (name: string): void => {
+    if (props.disabled) return;
+    props.onChange(props.selected.filter((x) => x !== name));
+  };
+
+  // 已选但已不在宿主列表里（技能被卸载/改名）也要显示，避免用户看到"凭空消失"
+  const picked: MetaSkill[] = props.selected.map((name) => {
+    const hit = props.skills.find((s) => s.name === name);
+    return hit ?? { name, description: '', kind: 'skill' as const, title: name };
+  });
+
+  const q = query.trim().toLowerCase();
+  const match = (s: MetaSkill): boolean =>
+    q === '' || `${s.title ?? ''} ${s.name} ${s.description}`.toLowerCase().includes(q);
+
+  const chip = (skill: MetaSkill): ReactElement =>
+    createElement(
+      'span',
+      { className: 'dsh-cb-skillchip', key: skill.name, title: skill.description },
+      createElement(SkillAvatar, { skill }),
+      createElement('span', { className: 'dsh-cb-skillchip-name' }, skillLabel(skill)),
+      props.disabled
+        ? null
+        : createElement(
+            'span',
+            {
+              className: 'dsh-cb-skillchip-x',
+              title: t('f.skillRemove'),
+              onClick: (e: { stopPropagation(): void }) => {
+                e.stopPropagation();
+                remove(skill.name);
+              },
+            },
+            '×',
+          ),
+    );
+
+  const triggerBody: ReactNode =
+    picked.length === 0
+      ? createElement('span', { className: 'dsh-cb-skillplaceholder' }, t('f.skillPlaceholder'))
+      : createElement('span', { className: 'dsh-cb-skillchips' }, picked.map(chip));
+
+  const trigger = createElement(
+    'button',
+    {
+      type: 'button',
+      className: open ? 'dsh-cb-skilltrigger dsh-cb-skilltrigger-open' : 'dsh-cb-skilltrigger',
+      disabled: props.disabled,
+      onClick: () => setOpen((v) => !v),
+    },
+    triggerBody,
+    createElement('span', { className: 'dsh-cb-skillcaret' }, '▾'),
+  );
+
+  const row = (skill: MetaSkill): ReactElement => {
+    const on = props.selected.includes(skill.name);
+    const blocked = !on && (props.disabled || props.selected.length >= props.max);
+    const cls = on ? 'dsh-cb-skillrow dsh-cb-skillrow-on' : 'dsh-cb-skillrow';
+    return createElement(
+      'button',
+      {
+        type: 'button',
+        key: skill.name,
+        className: blocked ? `${cls} dsh-cb-skillrow-off` : cls,
+        title: skill.description,
+        disabled: blocked,
+        onClick: () => toggle(skill.name),
+      },
+      createElement(SkillAvatar, { skill }),
+      createElement(
+        'span',
+        { className: 'dsh-cb-skillrow-main' },
+        createElement('span', { className: 'dsh-cb-skillrow-name' }, skillLabel(skill)),
+        createElement('span', { className: 'dsh-cb-skillrow-desc' }, skill.description),
+      ),
+      on ? createElement('span', { className: 'dsh-cb-skillrow-check' }, '✓') : null,
+    );
+  };
+
   const group = (kind: 'skill' | 'expert', title: string): ReactElement | null => {
-    const items = props.skills.filter((s) => s.kind === kind);
+    const items = props.skills.filter((s) => s.kind === kind && match(s));
     if (items.length === 0) return null;
     return createElement(
       'div',
       { className: 'dsh-cb-skillgroup' },
       createElement('span', { className: 'dsh-cb-skillgroup-title' }, title),
-      createElement(
-        'div',
-        { className: 'dsh-cb-skillgrid' },
-        items.map((skill) => {
-          const on = props.selected.includes(skill.name);
-          const blocked = !on && (props.disabled || props.selected.length >= props.max);
-          const cls = on ? 'dsh-cb-skillchip dsh-cb-skillchip-on' : 'dsh-cb-skillchip';
-          return createElement(
-            'button',
-            {
-              type: 'button',
-              key: skill.name,
-              className: blocked && !on ? `${cls} dsh-cb-skillchip-off` : cls,
-              title: skill.description,
-              disabled: blocked,
-              onClick: () => toggle(skill.name),
-            },
-            skill.title ?? skill.name,
-          );
-        }),
-      ),
+      items.map(row),
     );
   };
+
+  const total = props.skills.filter(match).length;
+  const panel = createElement(
+    'div',
+    { className: 'dsh-cb-skillmenu' },
+    createElement('input', {
+      className: 'dsh-cb-skillsearch',
+      value: query,
+      placeholder: t('f.skillSearch'),
+      onChange: (e: { target: { value: string } }) => setQuery(e.target.value),
+    }),
+    createElement(
+      'div',
+      { className: 'dsh-cb-skilllist' },
+      group('skill', t('f.skillGroupSkill')),
+      group('expert', t('f.skillGroupExpert')),
+      total === 0 ? createElement('div', { className: 'dsh-cb-fieldhint' }, t('f.skillNoMatch')) : null,
+    ),
+    createElement('div', { className: 'dsh-cb-skillfoot' }, t('f.skillFoot')),
+  );
+
   const body =
     props.skills.length === 0
       ? createElement('div', { className: 'dsh-cb-fieldhint' }, t('f.skillEmpty'))
       : createElement(
           'div',
-          { className: 'dsh-cb-skillpicker' },
-          group('skill', t('f.skillGroupSkill')),
-          group('expert', t('f.skillGroupExpert')),
+          { className: 'dsh-cb-skilldrop', ref: boxRef },
+          trigger,
+          open ? panel : null,
         );
   return createElement('div', { className: 'dsh-cb-field' }, body);
 }
