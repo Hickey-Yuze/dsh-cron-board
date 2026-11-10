@@ -6,7 +6,7 @@
  */
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { BoardSnapshot, Execution, MetaView, TaskView } from '../../src/contract.js';
+import type { BoardSnapshot, Execution, MetaView, TaskView, UpdateInfo } from '../../src/contract.js';
 import { describeCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, fmtFuture } from './format.js';
 import { lang, t, tpl } from './i18n.js';
@@ -16,6 +16,9 @@ import { Badge, Btn } from './ui.js';
 import logoUrl from '../assets/logo.png';
 
 type Chip = 'all' | 'enabled' | 'paused' | 'archived';
+
+/** 自更新命令：插件经软链指向源码仓库，build 后重启 Harness 生效。 */
+const UPDATE_CMD = 'cd ~/dsh-cron-board && git pull && pnpm run build';
 
 function statusTone(s: Execution['status']): 'ok' | 'err' | 'warn' | 'accent' {
   if (s === 'success') return 'ok';
@@ -238,6 +241,9 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [detailId, setDetailId] = useState<string | null | undefined>(undefined);
   const [cloneFrom, setCloneFrom] = useState<TaskView | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -262,6 +268,22 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       if (r.ok) setMeta(r.value);
     })();
   }, [props.rpc]);
+
+  // 版本检查：面板打开时探一次 GitHub 最新 tag（服务端 10 分钟缓存，失败静默）
+  useEffect(() => {
+    void (async () => {
+      const r = await props.rpc('cron-board/check-update', {});
+      if (r.ok && r.value !== null && r.value.hasUpdate) setUpdate(r.value);
+    })();
+  }, [props.rpc]);
+
+  // 更新弹层点击外部关闭
+  useEffect(() => {
+    if (!updateOpen) return;
+    const close = () => setUpdateOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [updateOpen]);
 
   // ⌘K / Ctrl+K 聚焦搜索
   useEffect(() => {
@@ -378,6 +400,55 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
       void props.rpc('cron-board/task-toggle', { id: task.id, enabled: task.enabled === false }).then(() => void load()),
   };
 
+  // 版本徽章：有新版时变琥珀可点（弹层给升级命令，client 侧无外链能力）
+  const renderUpdatePop = (): ReactNode => {
+    if (update === null) return null;
+    return createElement('div', { className: 'dsh-cb-pop dsh-cb-updpop', onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
+      createElement('div', { className: 'dsh-cb-updhead' }, t('board.updateFound')),
+      createElement('div', { className: 'dsh-cb-updrow' },
+        createElement('span', { className: 'dsh-cb-updk' }, t('board.updateCurrent')),
+        createElement('span', { className: 'dsh-cb-updv' }, `v${update.current}`),
+      ),
+      createElement('div', { className: 'dsh-cb-updrow' },
+        createElement('span', { className: 'dsh-cb-updk' }, t('board.updateLatest')),
+        createElement('span', { className: 'dsh-cb-updv dsh-cb-updv-new' }, `v${update.latest}`),
+      ),
+      createElement('div', { className: 'dsh-cb-updhint' }, t('board.updateHint')),
+      createElement('code', { className: 'dsh-cb-updcmd' }, UPDATE_CMD),
+      createElement('div', { className: 'dsh-cb-updacts' },
+        createElement('button', {
+          type: 'button',
+          className: 'dsh-cb-btn-outline',
+          onClick: () => {
+            void (async () => {
+              try {
+                await navigator.clipboard.writeText(UPDATE_CMD);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch { /* 剪贴板不可用时静默 */ }
+            })();
+          },
+        }, copied ? t('board.updateCopied') : t('board.updateCopy')),
+        createElement('button', { type: 'button', className: 'dsh-cb-btn-ghost', onClick: () => setUpdateOpen(false) }, t('board.updateLater')),
+      ),
+    );
+  };
+
+  const verBadge =
+    meta === null || meta.version === ''
+      ? null
+      : update === null
+        ? createElement('span', { className: 'dsh-cb-ver' }, `v${meta.version}`)
+        : createElement('div', { className: 'dsh-cb-verwrap' },
+            createElement('button', {
+              type: 'button',
+              className: 'dsh-cb-ver dsh-cb-ver-hot',
+              title: `${t('board.updateFound')} v${update.latest}`,
+              onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); setUpdateOpen((v) => !v); },
+            }, `v${meta.version} ↑`, createElement('span', { className: 'dsh-cb-ver-dot' })),
+            updateOpen ? renderUpdatePop() : null,
+          );
+
   const statusText = snap
     ? snap.pushChannel.mode === 'service'
       ? t('board.status.service')
@@ -403,7 +474,7 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         createElement('div', { className: 'dsh-cb-titlewrap' },
           createElement('div', { className: 'dsh-cb-titlerow' },
             createElement('h2', { className: 'dsh-cb-title' }, t('board.titleClean')),
-            meta && meta.version !== '' ? createElement('span', { className: 'dsh-cb-ver' }, `v${meta.version}`) : null,
+            meta && meta.version !== '' ? verBadge : null,
           ),
           createElement('div', { className: 'dsh-cb-statusline' },
             createElement('span', { className: `dsh-cb-statusdot dsh-cb-statusdot-${statusToneCls}` }),

@@ -99,9 +99,6 @@ function SvgIcon(props: { children?: ReactNode; size?: number }): ReactElement {
     props.children,
   );
 }
-const IconShieldCheck = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z' }), createElement('path', { d: 'm9 12 2 2 4-4' }));
-const IconShieldAlert = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z' }), createElement('path', { d: 'M12 8v5' }), createElement('circle', { cx: 12, cy: 16, r: 0.6, fill: 'currentColor', stroke: 'none' }));
-const IconLock = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('rect', { x: 5, y: 11, width: 14, height: 9, rx: 2 }), createElement('path', { d: 'M8 11V8a4 4 0 0 1 8 0v3' }));
 const IconX = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M6 6l12 12M18 6 6 18' }));
 const IconClock = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('circle', { cx: 12, cy: 12, r: 9 }), createElement('path', { d: 'M12 7v5l3 3' }));
 const IconSave = (p: { size?: number }) => createElement(SvgIcon, { size: p.size }, createElement('path', { d: 'M5 3h11l3 3v15H5V3z' }), createElement('path', { d: 'M8 3v5h7V3M8 21v-7h8v7' }));
@@ -238,8 +235,6 @@ export function DetailModal(props: {
   const badgeFileRef = useRef<HTMLInputElement | null>(null);
   const badgeColorRef = useRef<HTMLInputElement | null>(null);
   const imageFileRef = useRef<HTMLInputElement | null>(null);
-  const [aiText, setAiText] = useState('');
-  const [aiParsing, setAiParsing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -360,28 +355,6 @@ export function DetailModal(props: {
     }
   }
 
-  /** AI 解析：粘贴文本 → 表单填充（不自动保存，解析失败不动已输入内容）。 */
-  async function runAiParse(): Promise<void> {
-    const text = aiText.trim();
-    if (text === '' || aiParsing) return;
-    setAiParsing(true);
-    setErr(null);
-    try {
-      const r = await props.rpc('cron-board/parse-prompt', { text });
-      if (r.ok) {
-        if (typeof r.value.title === 'string' && r.value.title !== '') setTitle(r.value.title);
-        if (typeof r.value.prompt === 'string' && r.value.prompt !== '') setPrompt(r.value.prompt);
-        if (typeof r.value.cron === 'string' && r.value.cron !== '' && isValidCron(r.value.cron)) {
-          setCronFields(splitCronFields(r.value.cron));
-        }
-        setNote(t('f.aiHint'));
-      } else {
-        setErr(r.error.message);
-      }
-    } finally {
-      setAiParsing(false);
-    }
-  }
 
   function addTag(): void {
     const name = tagDraft.name.trim();
@@ -402,39 +375,6 @@ export function DetailModal(props: {
       setImages((prev) => [...(prev ?? []), ...next].slice(0, 4));
     })();
   }
-
-  // ── 权限确认门卡（绿=已确认 / 橙=待确认 / 灰=跟随默认档）──
-  const gateCard = task
-    ? createElement(
-        'div',
-        { className: `dsh-cb-gatecard ${task.needsConfirm ? (task.confirmed ? 'dsh-cb-gatecard-ok' : 'dsh-cb-gatecard-warn') : 'dsh-cb-gatecard-neutral'}` },
-        createElement('span', { className: 'dsh-cb-gatecard-icon' },
-          task.needsConfirm ? (task.confirmed ? createElement(IconShieldCheck, { size: 17 }) : createElement(IconShieldAlert, { size: 17 })) : createElement(IconLock, { size: 17 }),
-        ),
-        createElement(
-          'div',
-          { className: 'dsh-cb-gatecard-main' },
-          createElement('div', { className: 'dsh-cb-gatecard-title' },
-            task.needsConfirm ? (task.confirmed ? t('gate.okTitle') : t('gate.warnTitle')) : t('gate.neutralTitle'),
-          ),
-          task.needsConfirm
-            ? createElement('div', { className: 'dsh-cb-gatecard-body' }, t('gate.body'))
-            : createElement('div', { className: 'dsh-cb-gatecard-body' }, `${t('f.permission')}: ${t('perm.read-only')}`),
-          task.needsConfirm && !task.confirmed
-            ? createElement(
-                'div',
-                { className: 'dsh-cb-gatecard-actions' },
-                createElement(Btn2, {
-                  kind: 'primary',
-                  label: t('act.confirm'),
-                  disabled: busy,
-                  onClick: () => void action(() => props.rpc('cron-board/task-confirm', { id: task.id }), t('dl.confirmed')),
-                }),
-              )
-            : null,
-        ),
-      )
-    : null;
 
   // ── cron 预览胶囊 ──
   const cronPill = createElement(
@@ -499,24 +439,6 @@ export function DetailModal(props: {
             createElement('div', { className: 'dsh-cb-gatecard-title' }, t('dl.archived')),
           ),
         ) : null,
-
-        gateCard,
-
-        // AI 解析（仅新建）
-        !task && !archived
-          ? createElement(
-              'div',
-              { className: 'dsh-cb-aicard' },
-              createElement(LabelRow, { label: t('f.aiParse') }),
-              createElement(TextArea, { value: aiText, onChange: setAiText, placeholder: t('f.aiPlaceholder'), rows: 3 }),
-              createElement(
-                'div',
-                { className: 'dsh-cb-airow' },
-                createElement(Btn2, { kind: 'outline', label: aiParsing ? t('f.aiParsing') : t('f.aiParse'), disabled: aiParsing || aiText.trim() === '', onClick: () => void runAiParse() }),
-                createElement('span', { className: 'dsh-cb-hint' }, t('f.aiHint')),
-              ),
-            )
-          : null,
 
         // 标题 / PROMPT
         createElement('div', { className: 'dsh-cb-field' },
@@ -881,21 +803,6 @@ export function DetailModal(props: {
                 }),
                 createElement('button', { type: 'button', className: 'dsh-cb-badge-btn', onClick: () => badgeFileRef.current?.click() }, t('f.badgeUpload')),
                 badge !== null ? createElement('button', { type: 'button', className: 'dsh-cb-badge-btn', onClick: () => setBadge(null) }, t('f.badgeClear')) : null,
-              ),
-            )
-          : null,
-
-        // 修改将重新武装确认门（橙卡）
-        task && task.executions.length > 0 && task.needsConfirm && task.confirmed
-          ? createElement(
-              'div',
-              { className: 'dsh-cb-gatecard dsh-cb-gatecard-warn dsh-cb-gatecard-flat' },
-              createElement('span', { className: 'dsh-cb-gatecard-icon' }, createElement(IconShieldAlert, { size: 17 })),
-              createElement(
-                'div',
-                { className: 'dsh-cb-gatecard-main' },
-                createElement('div', { className: 'dsh-cb-gatecard-title' }, t('dl.rearmTitle')),
-                createElement('div', { className: 'dsh-cb-gatecard-body' }, t('dl.rearmBody')),
               ),
             )
           : null,

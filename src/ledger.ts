@@ -39,7 +39,6 @@ function normalize(raw: unknown): LedgerDoc {
   for (const t of doc.tasks) {
     if (!Array.isArray(t.executions)) t.executions = [];
     if (!t.pinned) t.pinned = {};
-    t.confirm = t.confirm ?? null;
     t.nextRunAt = t.nextRunAt ?? null;
     t.lastSkipReason = t.lastSkipReason ?? null;
     t.lastPushTest = t.lastPushTest ?? null;

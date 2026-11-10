@@ -40,11 +40,6 @@ export interface Execution {
   push?: PushRecord;
 }
 
-export interface ConfirmState {
-  fingerprint: string;
-  confirmedAt: string;
-}
-
 /** 任务标签：名称必填；执行提示非空时在每次执行前注入到任务 Prompt 之前。 */
 export interface TaskTag {
   name: string;
@@ -66,7 +61,6 @@ export interface TaskRow {
   enabled: boolean;
   pinned: TaskPinned;
   push: PushTargetRef | null;
-  confirm: ConfirmState | null;
   nextRunAt: string | null;
   lastSkipReason: string | null;
   lastPushTest: PushTestRecord | null;
@@ -88,8 +82,6 @@ export interface TaskRow {
 }
 
 export interface TaskView extends TaskRow {
-  needsConfirm: boolean;
-  confirmed: boolean;
   running: boolean;
 }
 
@@ -256,14 +248,13 @@ export type CronBoardEndpoint =
   | 'cron-board/task-delete'
   | 'cron-board/task-run'
   | 'cron-board/task-toggle'
-  | 'cron-board/task-confirm'
   | 'cron-board/task-archive'
   | 'cron-board/task-restore'
-  | 'cron-board/parse-prompt'
   | 'cron-board/push-test'
   | 'cron-board/push-retry'
   | 'cron-board/exec-result'
-  | 'cron-board/session-ids';
+  | 'cron-board/session-ids'
+  | 'cron-board/check-update';
 
 export interface CronBoardRequestMap {
   'cron-board/state': Record<string, never>;
@@ -274,14 +265,13 @@ export interface CronBoardRequestMap {
   'cron-board/task-delete': { id: string };
   'cron-board/task-run': { id: string };
   'cron-board/task-toggle': { id: string; enabled: boolean };
-  'cron-board/task-confirm': { id: string };
   'cron-board/task-archive': { id: string };
   'cron-board/task-restore': { id: string };
-  'cron-board/parse-prompt': { text: string };
   'cron-board/push-test': { id: string };
   'cron-board/push-retry': { taskId: string; execId: string };
   'cron-board/exec-result': { taskId: string; execId: string };
   'cron-board/session-ids': Record<string, never>;
+  'cron-board/check-update': { force?: boolean };
 }
 
 export interface CronBoardResponseMap {
@@ -293,14 +283,13 @@ export interface CronBoardResponseMap {
   'cron-board/task-delete': BoardSnapshot;
   'cron-board/task-run': BoardSnapshot;
   'cron-board/task-toggle': BoardSnapshot;
-  'cron-board/task-confirm': BoardSnapshot;
   'cron-board/task-archive': BoardSnapshot;
   'cron-board/task-restore': BoardSnapshot;
-  'cron-board/parse-prompt': { title?: string; prompt?: string; cron?: string };
   'cron-board/push-test': BoardSnapshot;
   'cron-board/push-retry': BoardSnapshot;
   'cron-board/exec-result': { markdown: string };
   'cron-board/session-ids': SessionBadgesResult;
+  'cron-board/check-update': UpdateInfo | null;
 }
 
 /**
@@ -309,6 +298,21 @@ export interface CronBoardResponseMap {
  */
 export interface SessionBadgesResult {
   map: Record<string, TaskBadge | null>;
+}
+
+/**
+ * 版本检查结果（客户端头部徽章；`cron-board/check-update` 返回）。
+ * 远端不可达时端点返回 `null`，客户端静默不提示。
+ */
+export interface UpdateInfo {
+  /** 当前插件版本（package.json 的 version，不含 v 前缀）。 */
+  current: string;
+  /** 远端最新版本（去 v 前缀）。 */
+  latest: string;
+  /** 远端是否比本地新。 */
+  hasUpdate: boolean;
+  /** 版本页面地址（release 页或 releases 列表页）。 */
+  url: string;
 }
 
 /** 宿主 rpc 层的统一信封。 */

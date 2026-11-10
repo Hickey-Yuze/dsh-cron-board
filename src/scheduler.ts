@@ -3,11 +3,9 @@
  * 语义对齐 dsh-task-board：
  * - 错过触发（宿主停机/睡眠）→ 跳过绝不补跑，nextRunAt 向后滚动；
  * - 同任务运行中 → 跳过并滚动，不排队不并发；
- * - 权限待确认 → cron 跳过并滚动，滚动原因写回 lastSkipReason 供看板提示。
  */
 import { cronNextRun, isValidCron } from './cron.js';
 import type { PermissionPreset, TaskRow } from './contract.js';
-import { gateDecision } from './gatekeeper.js';
 import { errDetail } from './util.js';
 
 export interface SchedulerDeps {
@@ -69,7 +67,6 @@ export class Scheduler {
         let skip: string | null = null;
         if (missed) skip = 'missed-trigger-skipped';
         else if (this.runner.isRunning(task.id)) skip = 'task-running-skipped';
-        else if (gateDecision(task, this.deps.defaultPermission) === 'awaiting-confirmation') skip = 'awaiting-confirmation';
         else fire.push(task);
         const next = cronNextRun(task.cron, now);
         rolls.push({ id: task.id, nextRunAt: next ? next.toISOString() : null, skipReason: skip });

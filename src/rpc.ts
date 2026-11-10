@@ -21,12 +21,12 @@ import type {
   TaskView,
   PromptImageInput,
 } from './contract.js';
-import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import type { LedgerStore } from './ledger.js';
 import type { Pusher } from './pusher.js';
 import type { ResultStore } from './results.js';
 import type { TaskRunner } from './runner.js';
 import { errDetail, newTaskId } from './util.js';
+import { checkUpdate } from './version.js';
 
 interface HttpRequestLike {
   url?: string;
@@ -83,7 +83,6 @@ export interface RpcDeps {
   log: { info(m: string): void; warn(m: string): void; error(m: string): void };
   buildSnapshot(): BoardSnapshot;
   /** AI 解析（index.ts 注入，依赖 llm/agentDefaultModel；rpc 层不直接耦合 llm）。 */
-  parsePrompt(text: string, signal: AbortSignal): Promise<{ title?: string; prompt?: string; cron?: string }>;
   /** 任务图片入库（index.ts 注入，依赖宿主附件服务）。 */
   admitImages(images: PromptImageInput[]): Promise<unknown[]>;
 }
@@ -244,8 +243,6 @@ export function buildSnapshot(deps: RpcDeps): BoardSnapshot {
   const runningIds = new Set(deps.runner.runningTaskIds());
   const tasks: TaskView[] = deps.ledger.snapshot.tasks.map((t) => ({
     ...t,
-    needsConfirm: needsConfirm(t, deps.config.defaultPermission),
-    confirmed: isConfirmed(t),
     running: runningIds.has(t.id),
   }));
   return {
@@ -366,6 +363,26 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return { map: collectSessionMap(deps.ledger.snapshot.tasks) };
       }
 
+      case 'cron-board/check-update': {
+        // 方案 A：只查 GitHub 最新版本供头部提示，不下载、不改文件。
+        const force = (payload as { force?: unknown }).force === true;
+        let current = '';
+        try {
+          const pkg = require('../package.json') as { version?: unknown };
+          if (typeof pkg?.version === 'string') current = pkg.version;
+        } catch {
+          /* 版本缺失则无从比较 */
+        }
+        if (current === '') return null;
+        try {
+          return await checkUpdate(current, { force });
+        } catch (err) {
+          // 网络/限流失败不打扰用户：返回 null，头部静默。
+          deps.log.warn(`[cron-board] check-update 失败: ${errDetail(err)}`);
+          return null;
+        }
+      }
+
       case 'cron-board/meta': {
         let version = '';
         try {
@@ -455,10 +472,6 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               if (draft.badge === null) delete existing.badge;
               else existing.badge = draft.badge;
             }
-            // 确认门重武装：指纹变化即失效
-            if (existing.confirm && existing.confirm.fingerprint !== confirmFingerprint(existing)) {
-              existing.confirm = null;
-            }
             existing.nextRunAt = nextAt;
             existing.lastSkipReason = null;
             existing.updatedAt = now;
@@ -471,7 +484,6 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               enabled: draft.enabled,
               pinned: draft.pinned ?? {},
               push: draft.push ?? null,
-              confirm: null,
               nextRunAt: nextAt,
               lastSkipReason: null,
               lastPushTest: null,
@@ -548,19 +560,6 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return deps.buildSnapshot();
       }
 
-      case 'cron-board/parse-prompt': {
-        const r = asRecord(payload);
-        const text = asString(r.text, 'text', 8000).trim();
-        if (text === '') fail('bad-request', '解析文本不能为空');
-        const abort = new AbortController();
-        const timer = setTimeout(() => abort.abort(), 45_000);
-        try {
-          return await deps.parsePrompt(text, abort.signal);
-        } finally {
-          clearTimeout(timer);
-        }
-      }
-
       case 'cron-board/task-run': {
         const r = asRecord(payload);
         const id = asId(r.id, 'id');
@@ -568,23 +567,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         if (!task) fail('not-found', `任务不存在: ${id}`);
         if (task.archived) fail('archived', '任务已归档，恢复后再执行');
         if (deps.runner.isRunning(id)) fail('task-running', '任务正在运行');
-        if (gateDecision(task, deps.config.defaultPermission) === 'awaiting-confirmation') {
-          fail('awaiting-confirmation', '任务权限待确认：请在看板中完成一次性确认后再执行');
-        }
         await deps.runner.launch(task, 'manual');
-        return deps.buildSnapshot();
-      }
-
-      case 'cron-board/task-confirm': {
-        const r = asRecord(payload);
-        const id = asId(r.id, 'id');
-        await deps.ledger.mutate((doc) => {
-          const t = doc.tasks.find((x) => x.id === id);
-          if (!t) fail('not-found', `任务不存在: ${id}`);
-          if (!needsConfirm(t, deps.config.defaultPermission)) return;
-          t.confirm = { fingerprint: confirmFingerprint(t), confirmedAt: new Date().toISOString() };
-          t.updatedAt = new Date().toISOString();
-        });
         return deps.buildSnapshot();
       }
 

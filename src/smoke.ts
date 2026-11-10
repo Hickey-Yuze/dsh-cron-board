@@ -9,15 +9,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { cronNextRun, describeCron, isValidCron, parseCron } from './cron.js';
 import type { Execution, TaskRow } from './contract.js';
-import { confirmFingerprint, gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import { LedgerStore, type BoardTask } from './ledger.js';
-import { extractJsonObject } from './parse.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeTags } from './rpc.js';
 import { resolveBadgeColor } from './contract.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
 import { newSessionId, newTaskId } from './util.js';
+import { compareVersions, normalizeVersion } from './version.js';
 
 let section = 0;
 function ok(cond: unknown, msg: string): void {
@@ -40,7 +39,6 @@ function makeTask(patch: Partial<TaskRow> = {}): TaskRow {
     enabled: false,
     pinned: {},
     push: null,
-    confirm: null,
     nextRunAt: null,
     lastSkipReason: null,
     lastPushTest: null,
@@ -93,22 +91,6 @@ async function main(): Promise<void> {
   eq(describeCron('0 9 1 * *', 'zh'), '每月 1 日 09:00', '每月描述');
   eq(describeCron('30 8 * * *', 'en'), 'Daily at 08:30', '英文描述');
   eq(describeCron('5 6 2 3 *', 'zh'), '5 6 2 3 *', '复杂表达式回退原文');
-
-  // ── 4. 确认门 ──
-  section = 4;
-  const t1 = makeTask({ pinned: { permission: 'read-only' } });
-  eq(needsConfirm(t1, 'read-only'), false, 'read-only 不需确认');
-  const t2 = makeTask({ pinned: { permission: 'workspace-write' } });
-  eq(needsConfirm(t2, 'read-only'), true, '提权需确认');
-  eq(gateDecision(t2, 'read-only'), 'awaiting-confirmation', '未确认拒绝');
-  t2.confirm = { fingerprint: confirmFingerprint(t2), confirmedAt: new Date().toISOString() };
-  eq(gateDecision(t2, 'read-only'), 'allow', '确认后放行');
-  const before = t2.confirm.fingerprint;
-  t2.prompt = '改成另一件事';
-  eq(isConfirmed(t2), false, 'Prompt 变更 → 指纹失效重新武装');
-  t2.confirm = { fingerprint: before, confirmedAt: new Date().toISOString() };
-  t2.pinned = { permission: 'danger-full-access' };
-  eq(isConfirmed(t2), false, '权限变更 → 指纹失效');
 
   // ── 5. 账本 ──
   section = 5;
@@ -407,7 +389,6 @@ async function main(): Promise<void> {
     ok(artifact.includes('sidebar.panellist'), '看板入口挂载');
     ok(artifact.includes('cron-board/state'), 'RPC 端点接线');
     ok(artifact.includes('cron-board/task-archive'), '归档端点接线');
-    ok(artifact.includes('cron-board/parse-prompt'), 'AI 解析端点接线');
     ok(artifact.includes('dsh-cb-tagbadge'), '标签徽章样式接线');
     ok(artifact.includes('reuseSession'), '会话复用开关接线');
     ok(artifact.includes('dsh-cron-board'), 'slot id 同步');
@@ -415,7 +396,7 @@ async function main(): Promise<void> {
     console.log('#9 跳过（dist/client.js 未构建——先 pnpm run build 再跑完整 smoke）');
   }
 
-  // ── 10. v1.1.0：标签注入 / 归档拒绝 / 重启对账 / AI 容错 ──
+  // ── 10. v1.1.0：标签注入 / 归档拒绝 / 重启对账 ──
   section = 10;
   // 标签 Prompt 注入（带提示标签前置，无提示标签与无标签不改 Prompt）
   const tagged = makeTask({
@@ -446,11 +427,6 @@ async function main(): Promise<void> {
   const plain = makeTask({ prompt: '做一件事', tags: [{ name: '仅分类' }] });
   eq(buildPromptWithTags(plain), '做一件事', '无提示标签不改 Prompt');
   eq(buildPromptWithTags(makeTask({ prompt: '做一件事' })), '做一件事', '无标签不改 Prompt');
-  // AI 解析 JSON 容错
-  ok(extractJsonObject('{"title":"A","prompt":"B"}') !== undefined, '裸 JSON 解析');
-  ok(extractJsonObject('```json\n{"title":"A","prompt":"B"}\n```') !== undefined, '围栏 JSON 解析');
-  ok(extractJsonObject('好的：{"title":"A","prompt":"B"} 完毕') !== undefined, '杂文包裹 JSON 解析');
-  eq(extractJsonObject('完全没有对象'), undefined, '无对象返回 undefined');
   // 归档任务拒绝执行（launch 前置 + runner 桩账本）
   {
     const dir10 = await tempDir();
@@ -489,6 +465,22 @@ async function main(): Promise<void> {
       const e = doc.tasks.find((x) => x.id === 'task_stuck')!.executions[0];
       eq(e.exitReason, 'interrupted-by-restart', '对账取消原因');
     });
+  }
+
+  // ── 11. 版本检查（v1.3.16）：纯函数比较 + 端点接线 ──
+  section = 11;
+  eq(normalizeVersion('v1.3.15'), '1.3.15', '去 v 前缀');
+  eq(normalizeVersion('  1.3.15  '), '1.3.15', '去首尾空白');
+  ok(compareVersions('1.3.15', '1.3.14') > 0, '补丁号大 → 新');
+  ok(compareVersions('1.4.0', '1.3.99') > 0, '次版本优先于补丁');
+  ok(compareVersions('2.0.0', '1.99.99') > 0, '主版本优先');
+  ok(compareVersions('1.3.15', '1.3.15') === 0, '同版本相等');
+  ok(compareVersions('1.3', '1.3.0') === 0, '缺位补 0 相等');
+  ok(compareVersions('v1.3.16', '1.3.15') > 0, '带 v 前缀也能比较');
+  ok(compareVersions('1.4.0-beta.1', '1.3.15') > 0, '预发布标签被剥离后比较');
+  if (artifact !== '') {
+    ok(artifact.includes('cron-board/check-update'), '版本检查端点接线');
+    ok(artifact.includes('dsh-cb-ver-hot'), '更新徽章样式接线');
   }
 
   console.log(`smoke: all sections passed (${logs.length} log lines)`);

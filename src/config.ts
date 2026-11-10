@@ -45,7 +45,7 @@ function buildSchema(SchemaCtor: any): unknown {
       runTimeoutMin: SchemaCtor.number().default(60).description('单次执行超时（分钟）'),
       resultsKeepPerTask: SchemaCtor.number().default(20).description('每任务结果文件保留数'),
       executionsKeepPerTask: SchemaCtor.number().default(50).description('每任务执行记录保留数'),
-      defaultPermission: SchemaCtor.union(['read-only', 'workspace-write', 'danger-full-access']).default('read-only').description('默认权限档（确认门基准）'),
+      defaultPermission: SchemaCtor.union(['read-only', 'workspace-write', 'danger-full-access']).default('read-only').description('默认权限档（新建任务的初始值）'),
     }).description('调度与保留'),
     SchemaCtor.object({
       push: SchemaCtor.object({

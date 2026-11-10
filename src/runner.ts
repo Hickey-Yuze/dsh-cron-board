@@ -18,7 +18,6 @@ import type * as dshLlm from '@deepseek-ai/dsh-llm';
 import { readFile } from 'node:fs/promises';
 import type { CronBoardConfig } from './config.js';
 import type { Execution, PermissionPreset, TaskRow } from './contract.js';
-import { gateDecision, isConfirmed, needsConfirm } from './gatekeeper.js';
 import { LedgerStore } from './ledger.js';
 import type { DshImLike, Pusher } from './pusher.js';
 import type { ResultStore } from './results.js';
@@ -283,13 +282,6 @@ export class TaskRunner {
     let finalText = '';
     let status: Execution['status'] = 'failed';
     try {
-      // 门控复核（防绕过 RPC 直调）：待确认即终止
-      if (gateDecision(task, this.config.defaultPermission) === 'awaiting-confirmation') {
-        exitReason = 'awaiting-confirmation';
-        this.log.warn(`[cron-board] 任务 ${task.id} 待确认，拒绝执行`);
-        return;
-      }
-
       // 1. 组合 agent（官方 composeAgent 同款：meta.agentPreset + setup 内挂载 + 默认模型选择）
       const presets = this.ctx.get('agentPresets') as unknown as AgentPresetsLike | undefined;
       const defaultModel = this.ctx.get('agentDefaultModel') as unknown as AgentDefaultModelLike | undefined;
@@ -680,13 +672,3 @@ async function readResultBody(path: string | undefined): Promise<string | undefi
   }
 }
 
-/** 供 rpc/meta 使用的只读探测（避免 rpc 反向依赖 runner 内部）。 */
-export function gateSnapshot(
-  task: TaskRow,
-  defaultPermission: PermissionPreset,
-): { needsConfirm: boolean; confirmed: boolean } {
-  return {
-    needsConfirm: needsConfirm(task, defaultPermission),
-    confirmed: isConfirmed(task),
-  };
-}

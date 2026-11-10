@@ -17,7 +17,6 @@ import type {} from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-session';
 import { Config, resolveDataDir, type CronBoardConfig } from './config.js';
 import { LedgerStore } from './ledger.js';
-import { createAiParser } from './parse.js';
 import { Pusher, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { buildSnapshot, registerRpc, type RpcDeps } from './rpc.js';
@@ -83,7 +82,6 @@ export async function apply(ctx: Context, config: CronBoardConfig): Promise<void
     config,
     log,
     buildSnapshot: () => buildSnapshot(deps),
-    parsePrompt: createAiParser(ctx, log).parse,
     // 任务图片入库：经宿主附件服务换 durable ref（官方 admitPromptContent 路径）。
     admitImages: async (images) => {
       const store = ctx.get('attachments') as
