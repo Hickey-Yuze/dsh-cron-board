@@ -271,7 +271,8 @@ export type CronBoardEndpoint =
   | 'cron-board/push-retry'
   | 'cron-board/exec-result'
   | 'cron-board/session-ids'
-  | 'cron-board/check-update';
+  | 'cron-board/check-update'
+  | 'cron-board/apply-update';
 
 export interface CronBoardRequestMap {
   'cron-board/state': Record<string, never>;
@@ -289,6 +290,7 @@ export interface CronBoardRequestMap {
   'cron-board/exec-result': { taskId: string; execId: string };
   'cron-board/session-ids': Record<string, never>;
   'cron-board/check-update': { force?: boolean };
+  'cron-board/apply-update': Record<string, never>;
 }
 
 export interface CronBoardResponseMap {
@@ -307,6 +309,7 @@ export interface CronBoardResponseMap {
   'cron-board/exec-result': { markdown: string };
   'cron-board/session-ids': SessionBadgesResult;
   'cron-board/check-update': UpdateInfo | null;
+  'cron-board/apply-update': UpdateResult;
 }
 
 /**
@@ -330,6 +333,26 @@ export interface UpdateInfo {
   hasUpdate: boolean;
   /** 版本页面地址（release 页或 releases 列表页）。 */
   url: string;
+}
+
+/**
+ * 一键更新结果（`cron-board/apply-update` 返回）。
+ * 更新在插件真实安装目录内执行 `git pull --ff-only` + `pnpm run build`；
+ * `needRestart` 为 true 时，Node 侧新代码需用户 ⌘Q 退出并重启 Harness 才生效。
+ */
+export interface UpdateResult {
+  /** 整个流程是否成功（拉取 + 构建都通过）。 */
+  ok: boolean;
+  /** 是否真的拉到了新提交（false = 已是最新，未执行构建）。 */
+  changed: boolean;
+  /** 更新后的本地版本号（读不到时为空串）。 */
+  version: string;
+  /** 是否需要重启宿主才生效（构建失败时为 false，避免加载半成品）。 */
+  needRestart: boolean;
+  /** 失败发生的阶段：locate（不是 git 检出）/ pull / build。 */
+  stage: 'locate' | 'pull' | 'build';
+  /** 命令输出（已截断到末尾 8000 字符），失败时用于定位。 */
+  log: string;
 }
 
 /** 宿主 rpc 层的统一信封。 */

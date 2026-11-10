@@ -27,6 +27,7 @@ import type { ResultStore } from './results.js';
 import type { TaskRunner } from './runner.js';
 import { errDetail, newTaskId } from './util.js';
 import { checkUpdate } from './version.js';
+import { applyUpdate } from './updater.js';
 import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, collectSkills } from './skills.js';
 
 /**
@@ -404,6 +405,11 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           deps.log.warn(`[cron-board] check-update 失败: ${errDetail(err)}`);
           return null;
         }
+      }
+
+      case 'cron-board/apply-update': {
+        // 一键更新：git pull --ff-only + pnpm run build，失败只回日志不抛错。
+        return await applyUpdate();
       }
 
       case 'cron-board/meta': {

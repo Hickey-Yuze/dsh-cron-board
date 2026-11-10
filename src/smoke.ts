@@ -19,6 +19,7 @@ import { resolveBadgeColor } from './contract.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
 import { newSessionId, newTaskId } from './util.js';
 import { compareVersions, normalizeVersion } from './version.js';
+import { MANUAL_UPDATE_CMD, findRepoRoot } from './updater.js';
 
 let section = 0;
 function ok(cond: unknown, msg: string): void {
@@ -549,6 +550,18 @@ async function main(): Promise<void> {
     ok(artifact.includes('dsh-cb-skillmenu'), '技能下拉面板样式接线');
     ok(artifact.includes('dsh-cb-skillavatar'), '技能头像降级样式接线');
     ok(artifact.includes('cron-board/meta'), 'meta 端点接线');
+    // 一键更新：只断言静态接线与仓库定位，绝不真的 git pull / build。
+    ok(artifact.includes('cron-board/apply-update'), '一键更新端点接线');
+    ok(artifact.includes('dsh-cb-updstat'), '一键更新状态样式接线');
+    ok(MANUAL_UPDATE_CMD.includes('git pull'), '一键更新：手动命令含 git pull');
+    const root = findRepoRoot();
+    ok(root === null || root.includes(path.sep), '一键更新：仓库定位返回绝对路径或 null');
+    const bareDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cb-nogit-'));
+    try {
+      ok(findRepoRoot(bareDir) === null, '一键更新：非检出目录返回 null');
+    } finally {
+      await fs.rm(bareDir, { recursive: true, force: true });
+    }
   }
 
   console.log(`smoke: all sections passed (${logs.length} log lines)`);

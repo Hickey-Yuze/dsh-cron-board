@@ -438,7 +438,23 @@ const CSS = `
   background: #f4f5f7; border: 1px solid var(--dsh-cb-border); border-radius: 8px;
   padding: 7px 9px; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.dsh-cb-updacts { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.dsh-cb-updacts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.dsh-cb-updstat { margin-top: 10px; font-size: 12px; color: var(--dsh-cb-text); }
+.dsh-cb-updstat-ok { color: #047857; }
+.dsh-cb-updstat-err { color: var(--dsh-cb-err); }
+.dsh-cb-updtitle { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.dsh-cb-updspin {
+  display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px;
+  border: 2px solid rgba(20, 20, 30, 0.15); border-top-color: var(--dsh-cb-accent);
+  border-radius: 50%; animation: dsh-cb-spin 0.8s linear infinite;
+}
+@keyframes dsh-cb-spin { to { transform: rotate(360deg); } }
+.dsh-cb-updlog {
+  max-height: 120px; overflow: auto; margin: 8px 0 0; padding: 8px 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 16px;
+  white-space: pre-wrap; word-break: break-all; color: #374151;
+  background: #f4f5f7; border: 1px solid var(--dsh-cb-border); border-radius: 8px;
+}
 .dsh-cb-statusline { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dsh-cb-dim); }
 .dsh-cb-statusdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dsh-cb-statusdot-ok { background: #10b981; }

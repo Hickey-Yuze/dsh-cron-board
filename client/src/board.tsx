@@ -6,7 +6,7 @@
  */
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { BoardSnapshot, Execution, MetaView, TaskView, UpdateInfo } from '../../src/contract.js';
+import type { BoardSnapshot, Execution, MetaView, TaskView, UpdateInfo, UpdateResult } from '../../src/contract.js';
 import { describeCron } from '../../src/cron.js';
 import { fmtAgo, fmtDur, fmtFuture } from './format.js';
 import { lang, t, tpl } from './i18n.js';
@@ -244,6 +244,10 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  /** 一键更新结果；null = 尚未点过（弹层显示命令与按钮）。 */
+  const [upd, setUpd] = useState<UpdateResult | null>(null);
+  /** 更新进行中：禁用按钮 + 转圈，防止重复触发 build。 */
+  const [updating, setUpdating] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -401,8 +405,90 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
   };
 
   // 版本徽章：有新版时变琥珀可点（弹层给升级命令，client 侧无外链能力）
+  /** 触发一键更新：git pull --ff-only + pnpm run build（Node 侧 updater.ts）。 */
+  const runUpdate = (): void => {
+    if (updating) return;
+    setUpdating(true);
+    setUpd(null);
+    void (async () => {
+      try {
+        const res = await props.rpc('cron-board/apply-update', {});
+        if (res.ok) {
+          setUpd(res.value);
+        } else {
+          setUpd({
+            ok: false,
+            changed: false,
+            version: update === null ? '' : update.current,
+            needRestart: false,
+            stage: 'pull',
+            log: res.error.message,
+          });
+        }
+      } catch (e) {
+        setUpd({
+          ok: false,
+          changed: false,
+          version: update === null ? '' : update.current,
+          needRestart: false,
+          stage: 'pull',
+          log: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setUpdating(false);
+      }
+    })();
+  };
+
+  const renderUpdateResult = (): ReactNode => {
+    if (updating) {
+      return createElement('div', { className: 'dsh-cb-updstat' },
+        createElement('span', { className: 'dsh-cb-updspin' }),
+        createElement('span', null, t('board.updateRunning')),
+      );
+    }
+    if (upd === null) return null;
+    const ok = upd.ok;
+    let title = t('board.updateFailed');
+    if (ok) title = upd.changed ? t('board.updateDone') : t('board.updateSame');
+    const restartHint = ok && upd.needRestart ? createElement('div', { className: 'dsh-cb-updhint' }, t('board.updateRestart')) : null;
+    const logNode = upd.log === '' ? null : createElement('pre', { className: 'dsh-cb-updlog' }, upd.log);
+    return createElement('div', { className: ok ? 'dsh-cb-updstat dsh-cb-updstat-ok' : 'dsh-cb-updstat dsh-cb-updstat-err' },
+      createElement('div', { className: 'dsh-cb-updtitle' }, title),
+      restartHint,
+      logNode,
+    );
+  };
+
+  const renderUpdateActs = (): ReactNode => {
+    if (updating) return null;
+    if (upd !== null) {
+      return createElement('div', { className: 'dsh-cb-updacts' },
+        createElement('button', { type: 'button', className: 'dsh-cb-btn-primary', onClick: () => { setUpd(null); setUpdateOpen(false); } }, t('board.updateClose')),
+      );
+    }
+    return createElement('div', { className: 'dsh-cb-updacts' },
+      createElement('button', {
+        type: 'button',
+        className: 'dsh-cb-btn-outline',
+        onClick: () => {
+          void (async () => {
+            try {
+              await navigator.clipboard.writeText(UPDATE_CMD);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            } catch { /* 剪贴板不可用时静默 */ }
+          })();
+        },
+      }, copied ? t('board.updateCopied') : t('board.updateCopy')),
+      createElement('button', { type: 'button', className: 'dsh-cb-btn-primary', onClick: runUpdate }, t('board.updateNow')),
+    );
+  };
+
   const renderUpdatePop = (): ReactNode => {
     if (update === null) return null;
+    const tipNode = upd === null && !updating ? createElement('div', { className: 'dsh-cb-updhint' }, t('board.updateHint')) : null;
+    const cmdNode = upd === null && !updating ? createElement('code', { className: 'dsh-cb-updcmd' }, UPDATE_CMD) : null;
     return createElement('div', { className: 'dsh-cb-pop dsh-cb-updpop', onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
       createElement('div', { className: 'dsh-cb-updhead' }, t('board.updateFound')),
       createElement('div', { className: 'dsh-cb-updrow' },
@@ -413,24 +499,10 @@ export function BoardPanel(props: { rpc: RpcFn; sessions?: { open?(sessionId: st
         createElement('span', { className: 'dsh-cb-updk' }, t('board.updateLatest')),
         createElement('span', { className: 'dsh-cb-updv dsh-cb-updv-new' }, `v${update.latest}`),
       ),
-      createElement('div', { className: 'dsh-cb-updhint' }, t('board.updateHint')),
-      createElement('code', { className: 'dsh-cb-updcmd' }, UPDATE_CMD),
-      createElement('div', { className: 'dsh-cb-updacts' },
-        createElement('button', {
-          type: 'button',
-          className: 'dsh-cb-btn-outline',
-          onClick: () => {
-            void (async () => {
-              try {
-                await navigator.clipboard.writeText(UPDATE_CMD);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              } catch { /* 剪贴板不可用时静默 */ }
-            })();
-          },
-        }, copied ? t('board.updateCopied') : t('board.updateCopy')),
-        createElement('button', { type: 'button', className: 'dsh-cb-btn-ghost', onClick: () => setUpdateOpen(false) }, t('board.updateLater')),
-      ),
+      tipNode,
+      cmdNode,
+      renderUpdateResult(),
+      renderUpdateActs(),
     );
   };
 
