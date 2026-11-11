@@ -9,7 +9,7 @@
  *   靠技能目录下 `.workbuddy-market.json` 的 `kind` 区分，缺失即按 skill 处理。
  */
 
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
@@ -20,6 +20,143 @@ export const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** 单个技能正文可达 20KB+，一次注入超过 4 个会让 Prompt 严重膨胀。 */
 export const MAX_SELECTED_SKILLS = 4;
+
+/** 宿主 skills 服务在 agent preset 层可见 user 技能；全局插件（cron-board）经
+ * `ctx.get('skills')` 只能看到 global 层（bundled/插件注册技能）。故 user 级技能
+ * 直接扫描文件系统（~/.dsh/skills + ~/.agents/skills，与宿主 skill-filesystem 的
+ * user 层一致），host 服务结果只作补充。 */
+export function userSkillRoots(): string[] {
+  return [join(resolveDshHome(), 'skills'), join(resolveAgentsHome(), 'skills')];
+}
+
+function resolveAgentsHome(): string {
+  const fromEnv = process.env.DSH_AGENTS_HOME;
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') return fromEnv.trim();
+  return join(homedir(), '.agents');
+}
+
+/** 技能文件的最小 frontmatter 解析结果（只取本插件需要的字段）。 */
+export interface ParsedSkillFile {
+  name: string;
+  description: string;
+  whenToUse?: string;
+  userInvocable: boolean;
+  content: string;
+  /** SKILL.md 的展示名（`displayName`/`display_name`/`display-name`/`title`），中文原名）。 */
+  displayName?: string;
+  /** SKILL.md 绝对路径（读本地 marker 用）。 */
+  path?: string;
+  /** 技能目录绝对路径（resourceBase 用）。 */
+  directory?: string;
+}
+
+function scalarValue(raw: string): string {
+  const t = raw.trim();
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  ) {
+    return t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+function parseBoolValue(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  if (t === 'true' || t === 'yes' || t === 'on' || t === '1') return true;
+  return false;
+}
+
+/**
+ * 解析 SKILL.md 的 frontmatter：只提取单行标量与 block 标量（`|`/`>` 家族）。
+ * 与宿主一致：缺 name+description、name 非 kebab-case 一律返回 undefined。
+ * 宽松于宿主（不整块 YAML 校验），坏 frontmatter 的技能仍可列出正文。
+ */
+export function parseSkillFrontmatter(raw: string): ParsedSkillFile | undefined {
+  if (typeof raw !== 'string' || !raw.startsWith('---')) return undefined;
+  const end = raw.indexOf('\n---', 3);
+  if (end < 0) return undefined;
+  const block = raw.slice(3, end);
+  const body = raw.slice(end + 4).trim();
+  const data = new Map<string, string>();
+  const lines = block.split(/\r?\n/);
+  let pendingKey: string | undefined;
+  const pending: string[] = [];
+  for (const line of lines) {
+    if (pendingKey !== undefined) {
+      const trimmed = line.trim();
+      if (trimmed === '' || /^\s+/.test(line)) {
+        if (trimmed !== '') pending.push(trimmed);
+        continue;
+      }
+      if (pending.length > 0) data.set(pendingKey, pending.join('\n'));
+      pendingKey = undefined;
+    }
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#') || trimmed.startsWith('---')) continue;
+    const idx = line.indexOf(':');
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim().toLowerCase();
+    const value = scalarValue(line.slice(idx + 1));
+    if (value === '|' || value === '|-' || value === '|+' || value === '>' || value === '>-' || value === '>+') {
+      pendingKey = key;
+      pending.length = 0;
+      continue;
+    }
+    data.set(key, value);
+  }
+  if (pendingKey !== undefined && pending.length > 0) data.set(pendingKey, pending.join('\n'));
+  const name = data.get('name') ?? '';
+  const description = data.get('description') ?? '';
+  if (name === '' || description === '' || !SKILL_NAME_RE.test(name)) return undefined;
+  const userInvocableRaw = data.get('user-invocable');
+  const userInvocable = userInvocableRaw === undefined ? true : parseBoolValue(userInvocableRaw);
+  const whenToUse = data.get('when-to-use');
+  const displayName =
+    data.get('display-name') ?? data.get('display_name') ?? data.get('displayname') ?? data.get('title') ?? '';
+  return {
+    name,
+    description,
+    ...(whenToUse === undefined || whenToUse === '' ? {} : { whenToUse }),
+    ...(displayName === '' ? {} : { displayName }),
+    userInvocable,
+    content: body,
+  };
+}
+
+/** 扫一个技能根目录下每个子目录的 SKILL.md（跳过 .system）。 */
+export function scanSkillDirectory(root: string): ParsedSkillFile[] {
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: ParsedSkillFile[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === '.system') continue;
+    const dir = join(root, entry.name);
+    let raw: string;
+    try {
+      raw = readFileSync(join(dir, 'SKILL.md'), 'utf8');
+    } catch {
+      continue;
+    }
+    const parsed = parseSkillFrontmatter(raw);
+    if (parsed === undefined) continue;
+    out.push({ ...parsed, path: join(dir, 'SKILL.md'), directory: dir });
+  }
+  return out;
+}
+
+/** 全部用户级技能（按 name 去重；~/.dsh 先扫，~/.agents 覆盖同名）。 */
+export function scanUserSkills(): Map<string, ParsedSkillFile> {
+  const byName = new Map<string, ParsedSkillFile>();
+  for (const root of userSkillRoots()) {
+    for (const skill of scanSkillDirectory(root)) byName.set(skill.name, skill);
+  }
+  return byName;
+}
 
 interface SkillBaseLike {
   name?: string;
@@ -194,39 +331,66 @@ export function renderSkillContent(skill: SkillDefinitionLike): string {
 /**
  * 收集可用于任务注入的技能清单（摘要，不含正文）。
  * `cwd` 传入任务钉住的工作区路径，才能看到该工作区下的技能。
+ *
+ * 来源（合并去重，user 层优先）：
+ * 1. 文件系统 user 级技能（~/.dsh/skills + ~/.agents/skills）——宿主 skills 服务
+ *    在 agent preset 层，全局插件经 `ctx.get('skills')` 读不到；
+ * 2. 宿主服务可见技能（bundled / 插件注册的 runtime 技能），作补充。
  */
 export async function collectSkills(ctx: Context, cwd?: string): Promise<MetaSkill[]> {
   const svc = skillsService(ctx);
-  if (!svc?.list) return [];
-  let list: SkillBaseLike[];
-  try {
-    list = (await svc.list(cwd === undefined ? {} : { cwd })) ?? [];
-  } catch {
-    return [];
-  }
   const market = marketDisplayMap();
   const out: MetaSkill[] = [];
   const seen = new Set<string>();
-  for (const s of list) {
-    const name = typeof s?.name === 'string' ? s.name : '';
-    if (name === '' || seen.has(name) || !SKILL_NAME_RE.test(name)) continue;
-    // 只列用户可主动调用的技能（模型专用技能不该出现在任务配置里）
-    if (s.invocation?.userInvocable !== true) continue;
+
+  // 1) 用户级技能：直接扫文件系统（带本地 marker 的中文名/归类）
+  for (const s of scanUserSkills().values()) {
+    if (!s.userInvocable) continue;
+    const name = s.name;
+    if (seen.has(name)) continue;
     seen.add(name);
     const marker = readMarketMarker(s.path);
     const display = market.get(name);
-    // 市场目录优先（中文岗位名与 yuze-market 一致），其次本地 marker，最后 UI 回落 name
-    const title = display?.title ?? marker?.title;
+    // 市场目录优先（与 yuze-market 一致），其次 SKILL.md 自带展示名（中文原名），
+    // 再次本地 marker，最后 UI 回落 name
+    const title = display?.title ?? s.displayName ?? marker?.title;
     out.push({
       name,
-      description: typeof s.description === 'string' ? s.description : '',
-      // 本地 marker 最可信（安装时写入），其次市场目录归类，最后按技能处理
+      description: s.description,
       kind: marker?.kind === 'expert' || (marker === undefined && display?.kind === 'expert') ? 'expert' : 'skill',
       ...(title === undefined ? {} : { title }),
       ...(display?.emoji === undefined ? {} : { emoji: display.emoji }),
       ...(display?.avatarUrl === undefined ? {} : { avatarUrl: display.avatarUrl }),
     });
   }
+
+  // 2) 宿主服务可见技能（user 层同名已被上面占据，这里只补 host 独有）
+  if (svc?.list) {
+    let list: SkillBaseLike[];
+    try {
+      list = (await svc.list(cwd === undefined ? {} : { cwd })) ?? [];
+    } catch {
+      list = [];
+    }
+    for (const s of list) {
+      const name = typeof s?.name === 'string' ? s.name : '';
+      if (name === '' || seen.has(name) || !SKILL_NAME_RE.test(name)) continue;
+      if (s.invocation?.userInvocable !== true) continue;
+      seen.add(name);
+      const marker = readMarketMarker(s.path);
+      const display = market.get(name);
+      const title = display?.title ?? marker?.title;
+      out.push({
+        name,
+        description: typeof s.description === 'string' ? s.description : '',
+        kind: marker?.kind === 'expert' || (marker === undefined && display?.kind === 'expert') ? 'expert' : 'skill',
+        ...(title === undefined ? {} : { title }),
+        ...(display?.emoji === undefined ? {} : { emoji: display.emoji }),
+        ...(display?.avatarUrl === undefined ? {} : { avatarUrl: display.avatarUrl }),
+      });
+    }
+  }
+
   // 技能在前、专家在后，各自按名字排序，便于 UI 稳定分组
   out.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'skill' ? -1 : 1));
   return out;
@@ -235,11 +399,13 @@ export async function collectSkills(ctx: Context, cwd?: string): Promise<MetaSki
 /**
  * 按名字取正文并拼成注入文本；任一失败跳过（非致命）。
  * 返回空串表示无需注入。
+ *
+ * 加载顺序：文件系统 user 级技能（宿主服务读不到 user 层）→ 宿主服务兜底。
  */
 export async function renderSelectedSkills(ctx: Context, names: string[] | undefined, cwd?: string): Promise<string> {
   if (!names || names.length === 0) return '';
   const svc = skillsService(ctx);
-  if (!svc?.get) return '';
+  const userSkills = scanUserSkills();
   const parts: string[] = [];
   const seen = new Set<string>();
   for (const raw of names) {
@@ -247,6 +413,23 @@ export async function renderSelectedSkills(ctx: Context, names: string[] | undef
     if (name === '' || seen.has(name) || !SKILL_NAME_RE.test(name)) continue;
     if (seen.size >= MAX_SELECTED_SKILLS) break;
     seen.add(name);
+    const fileSkill = userSkills.get(name);
+    if (fileSkill !== undefined) {
+      parts.push(
+        renderSkillContent({
+          name: fileSkill.name,
+          description: fileSkill.description,
+          content: fileSkill.content,
+          resourceBase:
+            fileSkill.directory === undefined
+              ? undefined
+              : { kind: 'directory' as const, path: fileSkill.directory },
+          provider: 'filesystem',
+        }),
+      );
+      continue;
+    }
+    if (!svc?.get) continue;
     let def: SkillDefinitionLike | undefined;
     try {
       def = await svc.get(name, cwd === undefined ? {} : { cwd });

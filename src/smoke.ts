@@ -13,7 +13,7 @@ import { LedgerStore, type BoardTask } from './ledger.js';
 import { Pusher, dingtalkFormatSafe, type DshImLike } from './pusher.js';
 import { ResultStore } from './results.js';
 import { collectSessionMap, normalizeBadge, normalizeDraft, normalizeSkillNames, normalizeTags } from './rpc.js';
-import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, SKILLS_INJECT_HEADER, collectSkills, marketDisplayMap, renderSelectedSkills, renderSkillContent } from './skills.js';
+import { MAX_SELECTED_SKILLS, SKILL_NAME_RE, SKILLS_INJECT_HEADER, collectSkills, marketDisplayMap, parseSkillFrontmatter, renderSelectedSkills, renderSkillContent, scanSkillDirectory, scanUserSkills } from './skills.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { resolveBadgeColor } from './contract.js';
 import { buildPromptWithTags, TaskRunner } from './runner.js';
@@ -505,9 +505,14 @@ async function main(): Promise<void> {
   ok(!SKILL_NAME_RE.test('a b'), '名称：空格非法');
   eq(SKILLS_INJECT_HEADER.includes('定时任务配置注入'), true, '注入前缀说明来源');
 
-  // 无 skills 服务时全链路优雅降级（宿主没有该服务也必须能跑）
+  // 无 skills 服务时全链路优雅降级（宿主没有该服务也必须能跑；user 级技能照常来自文件系统）
   const bareCtx = { get: () => undefined } as unknown as Context;
-  eq((await collectSkills(bareCtx)).length, 0, '降级：无服务时技能清单为空');
+  const bareSkills = await collectSkills(bareCtx);
+  ok(Array.isArray(bareSkills), '降级：无服务时返回数组');
+  ok(
+    bareSkills.every((s) => s.kind === 'skill' || s.kind === 'expert'),
+    '降级：user 级技能归类合法',
+  );
   eq(await renderSelectedSkills(bareCtx, undefined), '', '降级：未选技能返回空串');
   eq(await renderSelectedSkills(bareCtx, ['demo-skill']), '', '降级：有选择但无服务返回空串');
 
@@ -543,6 +548,104 @@ async function main(): Promise<void> {
       displays.every((d) => d.title === undefined || d.title.trim() !== ''),
       '市场：展示名不留空白字符串',
     );
+  }
+
+  // ── 13. 文件系统技能源（v1.6.1）：user 级技能不依赖宿主 skills 服务 ──
+  section = 13;
+  // frontmatter 解析
+  const fm = parseSkillFrontmatter('---\nname: demo-tool\ndescription: 演示\nuser-invocable: true\n---\n# 正文\n内容');
+  ok(fm !== undefined && fm.name === 'demo-tool' && fm.description === '演示', '解析：单行标量');
+  ok(fm !== undefined && fm.content.includes('# 正文'), '解析：正文保留');
+  const fmBlock = parseSkillFrontmatter('---\nname: demo-block\ndescription: |\n  第一行\n  第二行\n---\n正文');
+  ok(fmBlock !== undefined && fmBlock.description === '第一行\n第二行', '解析：block 标量描述');
+  ok(parseSkillFrontmatter('---\nname: Bad_Name\ndescription: x\n---\n') === undefined, '解析：非法名拒绝');
+  ok(parseSkillFrontmatter('---\nname: only-name\n---\n') === undefined, '解析：缺 description 拒绝');
+  ok(parseSkillFrontmatter('no frontmatter') === undefined, '解析：无 frontmatter 拒绝');
+  ok(
+    parseSkillFrontmatter('---\nname: loose-yaml\ndescription: ok\nhomepage: `bad`\n---\n')?.name === 'loose-yaml',
+    '解析：坏 YAML 字段宽松通过（正文仍可用）',
+  );
+  ok(
+    parseSkillFrontmatter('---\nname: m-only\ndescription: 模型专用\nuser-invocable: false\n---\n')?.userInvocable === false,
+    '解析：user-invocable false 生效',
+  );
+  ok(
+    parseSkillFrontmatter('---\nname: with-title\ndescription: x\ntitle: 中文原名\n---\n')?.displayName === '中文原名',
+    '解析：title 字段作为展示名',
+  );
+  ok(
+    parseSkillFrontmatter('---\nname: with-display\ndescription: x\ndisplay_name: 中文原名二\n---\n')?.displayName === '中文原名二',
+    '解析：display_name 字段作为展示名',
+  );
+
+  // 目录扫描（临时目录）
+  const skRoot = await tempDir();
+  try {
+    const good = path.join(skRoot, 'good-skill');
+    const badName = path.join(skRoot, 'bad-name');
+    const noDesc = path.join(skRoot, 'no-desc');
+    await fs.mkdir(good);
+    await fs.mkdir(badName);
+    await fs.mkdir(noDesc);
+    await fs.writeFile(path.join(good, 'SKILL.md'), '---\nname: good-skill\ndescription: 好技能\n---\n正文A');
+    await fs.writeFile(path.join(badName, 'SKILL.md'), '---\nname: Bad_Skill\ndescription: x\n---\n');
+    await fs.writeFile(path.join(noDesc, 'SKILL.md'), '---\nname: no-desc\n---\n');
+    const scanned = scanSkillDirectory(skRoot);
+    eq(scanned.length, 1, '扫描：只有合法技能');
+    eq(scanned[0].name, 'good-skill', '扫描：技能名');
+    ok(scanned[0].path === path.join(good, 'SKILL.md'), '扫描：带路径');
+  } finally {
+    await fs.rm(skRoot, { recursive: true, force: true });
+  }
+
+  // 合并：host 服务只补 host 独有技能（user 层同名优先）
+  const hostList = [
+    { name: 'host-only-tool', description: '宿主工具', invocation: { userInvocable: true } },
+    { name: 'Bad_Skill', description: '非法名（不应出现）', invocation: { userInvocable: true } },
+  ];
+  const mergedCtx = {
+    get: () => ({ list: async () => hostList, get: async () => undefined }),
+  } as unknown as Context;
+  const merged = await collectSkills(mergedCtx);
+  ok(merged.some((m) => m.name === 'host-only-tool'), '合并：host 独有技能在');
+  ok(!merged.some((m) => m.name === 'Bad_Skill'), '合并：非法名拒绝');
+
+  // 注入：文件系统正文优先；svc 兜底
+  eq(await renderSelectedSkills({ get: () => undefined } as unknown as Context, ['good-skill']), '', '注入：未知技能空串');
+  const svcInject = await renderSelectedSkills(
+    {
+      get: () => ({
+        get: async (name: string) => ({ name, description: 'x', content: `# ${name} 正文` }),
+      }),
+    } as unknown as Context,
+    ['host-only-tool'],
+  );
+  ok(svcInject.includes('<skill_content name="host-only-tool">'), '注入：svc 兜底生效');
+
+  // 本机真实 user 技能（若存在）：中文 marker 名 + 正文注入 + 同名优先
+  const realName = [...scanUserSkills().keys()][0];
+  if (realName !== undefined) {
+    const realDef = scanUserSkills().get(realName);
+    const realInject = await renderSelectedSkills({ get: () => undefined } as unknown as Context, [realName]);
+    ok(realInject.includes(`<skill_content name="${realName}">`), '注入：真实 user 技能正文');
+    const realCollected = await collectSkills({ get: () => undefined } as unknown as Context);
+    const realEntry = realCollected.find((m) => m.name === realName);
+    ok(realEntry !== undefined && realEntry.description === realDef?.description, '收集：真实技能描述一致');
+    const sameNameCtx = {
+      get: () => ({
+        list: async () => [
+          { name: realName, description: '宿主同名', invocation: { userInvocable: true } },
+        ],
+        get: async () => undefined,
+      }),
+    } as unknown as Context;
+    const m2 = await collectSkills(sameNameCtx);
+    ok(
+      m2.find((m) => m.name === realName)?.description === realDef?.description,
+      '合并：user 层同名优先于 host',
+    );
+  } else {
+    console.log('smoke: 本机无 user 级技能，跳过真实技能断言');
   }
 
   if (artifact !== '') {
